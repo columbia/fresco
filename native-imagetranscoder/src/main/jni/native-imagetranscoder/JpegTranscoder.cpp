@@ -21,6 +21,7 @@ using facebook::imagepipeline::getRotationTypeFromRawExifOrientation;
 using facebook::imagepipeline::RotationType;
 using facebook::imagepipeline::ScaleFactor;
 using facebook::imagepipeline::jpeg::transformJpeg;
+using facebook::imagepipeline::jpeg::encryptJpeg;
 
 static void JpegTranscoder_transcodeJpeg(
     JNIEnv* env,
@@ -66,6 +67,18 @@ static void JpegTranscoder_transcodeJpegWithExifOrientation(
       quality);
 }
 
+static void JpegTranscoder_encryptJpeg(
+    JNIEnv* env,
+    jclass /* clzz */,
+    jobject is,
+    jobject os) {
+  RETURN_IF_EXCEPTION_PENDING;
+  encryptJpeg(
+      env,
+      is,
+      os);
+}
+
 static JNINativeMethod gJpegTranscoderMethods[] = {
   { "nativeTranscodeJpeg",
     "(Ljava/io/InputStream;Ljava/io/OutputStream;III)V",
@@ -73,6 +86,9 @@ static JNINativeMethod gJpegTranscoderMethods[] = {
   { "nativeTranscodeJpegWithExifOrientation",
     "(Ljava/io/InputStream;Ljava/io/OutputStream;III)V",
     (void*) JpegTranscoder_transcodeJpegWithExifOrientation },
+  { "nativeEncryptJpeg",
+      "(Ljava/io/InputStream;Ljava/io/OutputStream;)V",
+      (void*) JpegTranscoder_encryptJpeg },
 };
 
 bool registerJpegTranscoderMethods(JNIEnv* env) {

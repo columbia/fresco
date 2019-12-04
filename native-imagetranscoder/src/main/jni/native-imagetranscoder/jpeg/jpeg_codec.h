@@ -34,6 +34,10 @@ void encodeJpegIntoOutputStream(
     jobject os,
     int quality);
 
+void encryptJpeg(
+    JNIEnv* env,
+    jobject is,
+    jobject os);
 
 /**
  * Downscales and rotates jpeg image
