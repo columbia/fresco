@@ -30,6 +30,7 @@ public class ImageRequestBuilder {
   private RequestLevel mLowestPermittedRequestLevel = RequestLevel.FULL_FETCH;
   private @Nullable ResizeOptions mResizeOptions = null;
   private @Nullable RotationOptions mRotationOptions = null;
+  private boolean mEncrypt = false;
   private ImageDecodeOptions mImageDecodeOptions = ImageDecodeOptions.defaults();
   private CacheChoice mCacheChoice = CacheChoice.DEFAULT;
   private boolean mProgressiveRenderingEnabled =
@@ -183,6 +184,22 @@ public class ImageRequestBuilder {
   /** Gets the rotation options if set, null otherwise. */
   public @Nullable RotationOptions getRotationOptions() {
     return mRotationOptions;
+  }
+
+  /**
+   * Enables or disables JPEG encryption.
+   *
+   * @param encrypt
+   * @return the modified builder instance
+   */
+  public ImageRequestBuilder setEncrypt(boolean encrypt) {
+    mEncrypt = encrypt;
+    return this;
+  }
+
+  /** Returns whether encrypting should take place.. */
+  public boolean shouldEncrypt() {
+    return mEncrypt;
   }
 
   /**

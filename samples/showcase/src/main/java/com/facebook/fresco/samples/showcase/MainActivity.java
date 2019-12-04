@@ -23,6 +23,8 @@ import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentTransaction;
+
+import com.facebook.fresco.samples.showcase.drawee.DraweeEncryptFragment;
 import com.facebook.fresco.samples.showcase.drawee.DraweeHierarchyFragment;
 import com.facebook.fresco.samples.showcase.drawee.DraweeMediaPickerFragment;
 import com.facebook.fresco.samples.showcase.drawee.DraweeRecyclerViewFragment;
@@ -159,6 +161,9 @@ public class MainActivity extends AppCompatActivity
         // Drawee
       case R.id.nav_drawee_simple:
         fragment = new DraweeSimpleFragment();
+        break;
+      case R.id.nav_drawee_encrypt:
+        fragment = new DraweeEncryptFragment();
         break;
       case R.id.nav_drawee_media_picker:
         fragment = new DraweeMediaPickerFragment();

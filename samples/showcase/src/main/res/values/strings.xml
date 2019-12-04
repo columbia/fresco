@@ -15,6 +15,9 @@
   <string name="drawee_simple_title">Simple Drawee</string>
   <string name="drawee_simple_help">Basic SimpleDraweeView example that just sets the image URI.</string>
 
+  <string name="drawee_encrypt_title">JPEG Encryption</string>
+  <string name="drawee_encrypt_help">JPEG encryption.</string>
+
   <string name="drawee_media_picker_title">Media Provider</string>
   <string name="drawee_media_picker_help">Select an image by pressing one of the media picker buttons.</string>
   <string name="drawee_media_picker_button_action_open_document">ACTION_OPEN_DOCUMENT</string>
