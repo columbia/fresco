@@ -318,6 +318,8 @@ void encryptJpeg(
     return;
   }
 
+  LOGD("encryptJpeg LOGD");
+
   // prepare decompress struct
   struct jpeg_decompress_struct dinfo;
   initDecompressStruct(dinfo, error_handler, source);
@@ -338,7 +340,9 @@ void encryptJpeg(
 
   // Iterate over every DCT coefficient in the image, for every color component
   for (int comp_i = 0; comp_i < dinfo.num_components; comp_i++) {
-    jpeg_component_info* comp_info = cinfo.comp_info + comp_i;
+    jpeg_component_info* comp_info = dinfo.comp_info + comp_i;
+
+    LOGD("encryptJpeg iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
 
     for (int y = 0; y < comp_info->height_in_blocks; y++) {
       JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
@@ -347,14 +351,15 @@ void encryptJpeg(
       // - the cth coefficient
       // - the xth horizontal block
       // - the yth vertical block
-      mcu_buff = (cinfo.mem->access_virt_barray)((j_common_ptr)&cinfo, srccoefs[comp_i], y, (JDIMENSION) 1, TRUE);
+      mcu_buff = (dinfo.mem->access_virt_barray)((j_common_ptr)&dinfo, srccoefs[comp_i], y, (JDIMENSION) 1, TRUE);
 
       for (int x = 0; x < comp_info->width_in_blocks; x++) {
         JCOEFPTR mcu_ptr; // Pointer to 8x8 block of coefficients (I think)
         mcu_ptr = mcu_buff[0][x];
 
         for (int i = 0; i < DCTSIZE2; i++) {
-          mcu_ptr[i]++; // Increment DC coefficient by 1
+          mcu_ptr[i] = mcu_ptr[i] * -1; // Modify DC coefficient
+          LOGD("Modified DC coefficient from %d to %d", mcu_ptr[i] * -1, mcu_ptr[i]);
         }
       }
     }
