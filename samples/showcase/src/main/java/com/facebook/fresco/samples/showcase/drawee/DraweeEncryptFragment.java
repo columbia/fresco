@@ -18,7 +18,8 @@ import com.facebook.imagepipeline.request.ImageRequestBuilder;
 
 public class DraweeEncryptFragment extends BaseShowcaseFragment {
 
-  private SimpleDraweeView mSimpleDraweeView;
+  private SimpleDraweeView mDraweeEncryptView;
+  private SimpleDraweeView mDraweeDecryptView;
   private Uri mUri;
 
   @Nullable
@@ -31,7 +32,8 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
   @Override
   public void onViewCreated(View view, @Nullable Bundle savedInstanceState) {
     mUri = sampleUris().createSampleUri(ImageUriProvider.ImageSize.M);
-    mSimpleDraweeView = (SimpleDraweeView) view.findViewById(R.id.drawee_view);
+    mDraweeEncryptView = view.findViewById(R.id.drawee_view);
+    mDraweeDecryptView = view.findViewById(R.id.drawee_decrypt);
 
     setEncryptOptions();
 
@@ -44,15 +46,36 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
                         setEncryptOptions();
                       }
                     });
+
+    view.findViewById(R.id.btn_decrypt_image)
+            .setOnClickListener(
+                    new View.OnClickListener() {
+                      @Override
+                      public void onClick(View v) {
+                        mUri = sampleUris().createSampleUri();
+                        setDecryptOptions();
+                      }
+                    });
   }
 
   private void setEncryptOptions() {
     ImageRequest imageRequest =
             ImageRequestBuilder.newBuilderWithSource(mUri)
                     .setEncrypt(true)
+                    .setDecrypt(true)
                     .setImageDecodeOptions(new ImageDecodeOptionsBuilder().build())
                     .build();
-    mSimpleDraweeView.setImageRequest(imageRequest);
+    mDraweeEncryptView.setImageRequest(imageRequest);
+  }
+
+  private void setDecryptOptions() {
+    ImageRequest imageRequest =
+            ImageRequestBuilder.newBuilderWithSource(mUri)
+                    .setEncrypt(true)
+                    .setDecrypt(true)
+                    .setImageDecodeOptions(new ImageDecodeOptionsBuilder().build())
+                    .build();
+    mDraweeDecryptView.setImageRequest(imageRequest);
   }
 
   @Override

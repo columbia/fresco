@@ -1,4 +1,4 @@
-package com.facebook.imagepipeline.encryptor;
+package com.facebook.imagepipeline.decryptor;
 
 import com.facebook.imageformat.ImageFormat;
 import com.facebook.imagepipeline.image.EncodedImage;
@@ -8,21 +8,21 @@ import java.io.OutputStream;
 
 import javax.annotation.Nullable;
 
-public interface ImageEncryptor {
+public interface ImageDecryptor {
 
   /**
-   * Encrypts an image.
+   * Decrypts an image.
    *
-   * @param encodedImage The {@link EncodedImage} that will be encrypted.
+   * @param encodedImage The {@link EncodedImage} that will be decrypted.
    * @param outputStream The {@link OutputStream} where the newly created image is written to.
    * @param outputFormat The desired {@link ImageFormat} of the newly created image. If this is null
    *     the same format as the input image will be used.
    * @param quality The desired quality of the newly created image. If this is null, the default
-   *     quality of the encryptor will be applied.
-   * @return The {@link ImageEncryptResult} generated when encoding the image.
+   *     quality of the decryptor will be applied.
+   * @return The {@link ImageDecryptResult} generated when encoding the image.
    * @throws IOException if I/O error happens when reading or writing the images.
    */
-  ImageEncryptResult encrypt(
+  ImageDecryptResult decrypt(
           EncodedImage encodedImage,
           OutputStream outputStream,
           @Nullable ImageFormat outputFormat,
@@ -30,17 +30,17 @@ public interface ImageEncryptor {
           throws IOException;
 
   /**
-   * Whether the input {@link ImageFormat} can be encrypted by the image encryptor.
+   * Whether the input {@link ImageFormat} can be encrypted by the image decryptor.
    *
-   * @param imageFormat The {@link ImageFormat} that will be encrypted.
-   * @return true if this image format is handled by the image encryptor, else false.
+   * @param imageFormat The {@link ImageFormat} that will be decrypted.
+   * @return true if this image format is handled by the image decryptor, else false.
    */
-  boolean canEncrypt(ImageFormat imageFormat);
+  boolean canDecrypt(ImageFormat imageFormat);
 
   /**
-   * Gets the identifier of the image encryptor. This is mostly used for logging purposes.
+   * Gets the identifier of the image decryptor. This is mostly used for logging purposes.
    *
-   * @return the identifier of the image encryptor.
+   * @return the identifier of the image decryptor.
    */
   String getIdentifier();
 }

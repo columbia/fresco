@@ -31,6 +31,7 @@ public class ImageRequestBuilder {
   private @Nullable ResizeOptions mResizeOptions = null;
   private @Nullable RotationOptions mRotationOptions = null;
   private boolean mEncrypt = false;
+  private boolean mDecrypt = false;
   private ImageDecodeOptions mImageDecodeOptions = ImageDecodeOptions.defaults();
   private CacheChoice mCacheChoice = CacheChoice.DEFAULT;
   private boolean mProgressiveRenderingEnabled =
@@ -197,9 +198,25 @@ public class ImageRequestBuilder {
     return this;
   }
 
-  /** Returns whether encrypting should take place.. */
+  /** Returns whether encrypting should take place. */
   public boolean shouldEncrypt() {
     return mEncrypt;
+  }
+
+  /**
+   * Enables or disables JPEG decryption.
+   *
+   * @param decrypt
+   * @return the modified builder instance
+   */
+  public ImageRequestBuilder setDecrypt(boolean decrypt) {
+    mDecrypt = decrypt;
+    return this;
+  }
+
+  /** Returns whether decrypting should take place. */
+  public boolean shouldDecrypt() {
+    return mDecrypt;
   }
 
   /**

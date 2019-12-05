@@ -29,4 +29,16 @@
       android:layout_height="wrap_content"
       android:text="@string/load_random_uri"
       />
+
+  <Button
+      android:id="@+id/btn_decrypt_image"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:text="@string/drawee_encrypt_decrypt_button" />
+
+  <com.facebook.drawee.view.SimpleDraweeView
+      android:id="@+id/drawee_decrypt"
+      android:layout_width="@dimen/drawee_width_medium"
+      android:layout_height="@dimen/drawee_height_medium"
+      />
 </LinearLayout>

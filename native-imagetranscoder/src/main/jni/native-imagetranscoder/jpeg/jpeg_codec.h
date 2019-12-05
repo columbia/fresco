@@ -39,6 +39,11 @@ void encryptJpeg(
     jobject is,
     jobject os);
 
+void decryptJpeg(
+    JNIEnv* env,
+    jobject is,
+    jobject os);
+
 /**
  * Downscales and rotates jpeg image
  *

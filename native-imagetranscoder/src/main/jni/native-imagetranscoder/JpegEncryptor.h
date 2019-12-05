@@ -5,4 +5,4 @@
 
 bool registerJpegEncryptorMethods(JNIEnv* env);
 
-#endif /* _JPEG_TRANSCODER_H_ */
+#endif /* _JPEG_ENCRYPTOR_H_ */

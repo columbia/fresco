@@ -12,6 +12,7 @@
 #include "logging.h"
 #include "JpegTranscoder.h"
 #include "JpegEncryptor.h"
+#include "JpegDecryptor.h"
 
 jmethodID midInputStreamRead;
 jmethodID midInputStreamSkip;
@@ -84,8 +85,13 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
       -1);
 
   THROW_AND_RETURNVAL_IF(
-       !registerJpegEncryptorMethods(env),
-       "Could not register JpegEncryptor methods",
-       -1);
+      !registerJpegEncryptorMethods(env),
+      "Could not register JpegEncryptor methods",
+      -1);
+
+  THROW_AND_RETURNVAL_IF(
+      !registerJpegDecryptorMethods(env),
+      "Could not register JpegDecryptor methods",
+      -1);
   return JNI_VERSION_1_6;
 }

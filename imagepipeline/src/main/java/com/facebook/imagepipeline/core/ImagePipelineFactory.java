@@ -33,9 +33,11 @@ import com.facebook.imagepipeline.cache.InstrumentedMemoryCache;
 import com.facebook.imagepipeline.cache.MemoryCache;
 import com.facebook.imagepipeline.decoder.DefaultImageDecoder;
 import com.facebook.imagepipeline.decoder.ImageDecoder;
+import com.facebook.imagepipeline.decryptor.ImageDecryptorFactory;
 import com.facebook.imagepipeline.drawable.DrawableFactory;
 import com.facebook.imagepipeline.encryptor.ImageEncryptorFactory;
 import com.facebook.imagepipeline.image.CloseableImage;
+import com.facebook.imagepipeline.nativecode.NativeImageDecryptorFactory;
 import com.facebook.imagepipeline.nativecode.NativeImageEncryptorFactory;
 import com.facebook.imagepipeline.nativecode.NativeImageTranscoderFactory;
 import com.facebook.imagepipeline.platform.PlatformDecoder;
@@ -130,6 +132,7 @@ public class ImagePipelineFactory {
   private ImagePipeline mImagePipeline;
   private ImageTranscoderFactory mImageTranscoderFactory;
   private ImageEncryptorFactory mImageEncryptorFactory;
+  private ImageDecryptorFactory mImageDecryptorFactory;
   private ProducerFactory mProducerFactory;
   private ProducerSequenceFactory mProducerSequenceFactory;
   private BufferedDiskCache mSmallImageBufferedDiskCache;
@@ -368,7 +371,8 @@ public class ImagePipelineFactory {
               mConfig.getExperiments().isPartialImageCachingEnabled(),
               mConfig.isDiskCacheEnabled(),
               getImageTranscoderFactory(),
-              getImageEncryptorFactory());
+              getImageEncryptorFactory(),
+              getImageDecryptorFactory());
     }
     return mProducerSequenceFactory;
   }
@@ -432,6 +436,14 @@ public class ImagePipelineFactory {
               .getNativeImageEncryptorFactory(mConfig.getExperiments().getMaxBitmapSize());
     }
     return mImageEncryptorFactory;
+  }
+
+  private ImageDecryptorFactory getImageDecryptorFactory() {
+    if (mImageDecryptorFactory == null) {
+      mImageDecryptorFactory = NativeImageDecryptorFactory
+              .getNativeImageDecryptorFactory(mConfig.getExperiments().getMaxBitmapSize());
+    }
+    return mImageDecryptorFactory;
   }
 
   @Nullable

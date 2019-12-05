@@ -17,6 +17,7 @@
 
   <string name="drawee_encrypt_title">JPEG Encryption</string>
   <string name="drawee_encrypt_help">JPEG encryption.</string>
+  <string name="drawee_encrypt_decrypt_button">Decrypt JPEG</string>
 
   <string name="drawee_media_picker_title">Media Provider</string>
   <string name="drawee_media_picker_help">Select an image by pressing one of the media picker buttons.</string>

@@ -276,7 +276,7 @@ static void iterateDCTs(j_decompress_ptr dinfo, jvirt_barray_ptr* src_coefs) {
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
     jpeg_component_info* comp_info = dinfo->comp_info + comp_i;
 
-    LOGD("encryptJpeg iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
+    LOGD("iterateDCTs iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
 
     for (int y = 0; y < comp_info->height_in_blocks; y++) {
       JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
@@ -298,6 +298,49 @@ static void iterateDCTs(j_decompress_ptr dinfo, jvirt_barray_ptr* src_coefs) {
       }
     }
   }
+}
+
+void decryptJpeg(
+    JNIEnv* env,
+    jobject is,
+    jobject os) {
+  JpegInputStreamWrapper is_wrapper{env, is};
+  JpegOutputStreamWrapper os_wrapper{env, os};
+  //JpegMemoryDestination mem_destination;
+  //JpegMemorySource mem_source;
+  JpegErrorHandler error_handler{env};
+  struct jpeg_source_mgr& source = is_wrapper.public_fields;
+  struct jpeg_destination_mgr& destination = os_wrapper.public_fields;
+
+  if (setjmp(error_handler.setjmpBuffer)) {
+    return;
+  }
+
+  // prepare decompress struct
+  struct jpeg_decompress_struct dinfo;
+  initDecompressStruct(dinfo, error_handler, source);
+
+  // create compress struct
+  struct jpeg_compress_struct cinfo;
+  initCompressStruct(cinfo, dinfo, error_handler, destination);
+
+  // get DCT coefficients, 64 for 8x8 DCT blocks (first is DC, remaining 63 are AC?)
+  jvirt_barray_ptr* src_coefs = jpeg_read_coefficients(&dinfo);
+
+  // initialize with default params, then copy the ones needed for lossless transcoding
+  jpeg_copy_critical_parameters(&dinfo, &cinfo);
+  jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
+
+  iterateDCTs(&dinfo, src_coefs);
+
+  jpeg_write_coefficients(&cinfo, src_coefs);
+
+  LOGD("decryptJpeg finished");
+
+  // tear down
+  jpeg_finish_compress(&cinfo);
+  jpeg_destroy_compress(&cinfo);
+  jpeg_destroy_decompress(&dinfo);
 }
 
 void encryptJpeg(

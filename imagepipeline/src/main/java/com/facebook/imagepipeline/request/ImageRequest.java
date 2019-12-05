@@ -68,6 +68,9 @@ public class ImageRequest {
   /** encrypt or not */
   private final boolean mEncrypt;
 
+  /** decrypt or not */
+  private final boolean mDecrypt;
+
   /** Range of bytes to request from the network */
   private final @Nullable BytesRange mBytesRange;
 
@@ -130,6 +133,7 @@ public class ImageRequest {
             ? RotationOptions.autoRotate()
             : builder.getRotationOptions();
     mEncrypt = builder.shouldEncrypt();
+    mDecrypt = builder.shouldDecrypt();
     mBytesRange = builder.getBytesRange();
 
     mRequestPriority = builder.getRequestPriority();
@@ -175,6 +179,10 @@ public class ImageRequest {
 
   public boolean shouldEncrypt() {
     return mEncrypt;
+  }
+
+  public boolean shouldDecrypt() {
+    return mDecrypt;
   }
 
   /** @deprecated Use {@link #getRotationOptions()} */
