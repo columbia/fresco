@@ -234,7 +234,7 @@ public class EncryptProducer implements Producer<EncodedImage> {
       return TriState.UNSET;
     }
 
-    if (!imageEncryptor.canEncrypt(encodedImage.getImageFormat())) {
+    if (!request.shouldEncrypt() || !imageEncryptor.canEncrypt(encodedImage.getImageFormat())) {
       return TriState.NO;
     }
 

@@ -62,7 +62,6 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
     ImageRequest imageRequest =
             ImageRequestBuilder.newBuilderWithSource(mUri)
                     .setEncrypt(true)
-                    .setDecrypt(true)
                     .setImageDecodeOptions(new ImageDecodeOptionsBuilder().build())
                     .build();
     mDraweeEncryptView.setImageRequest(imageRequest);
@@ -71,7 +70,6 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
   private void setDecryptOptions() {
     ImageRequest imageRequest =
             ImageRequestBuilder.newBuilderWithSource(mUri)
-                    .setEncrypt(true)
                     .setDecrypt(true)
                     .setImageDecodeOptions(new ImageDecodeOptionsBuilder().build())
                     .build();

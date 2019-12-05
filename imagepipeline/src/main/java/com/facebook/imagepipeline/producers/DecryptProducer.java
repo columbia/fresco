@@ -207,7 +207,8 @@ public class DecryptProducer implements Producer<EncodedImage> {
       }
     }
 
-    private @Nullable Map<String, String> getExtraMap(
+    private @Nullable
+    Map<String, String> getExtraMap(
             EncodedImage encodedImage,
             @Nullable ImageDecryptResult decryptResult,
             @Nullable String decryptorId) {
@@ -234,10 +235,10 @@ public class DecryptProducer implements Producer<EncodedImage> {
       return TriState.UNSET;
     }
 
-    if (!imageDecryptor.canDecrypt(encodedImage.getImageFormat())) {
+    if (!request.shouldDecrypt() || !imageDecryptor.canDecrypt(encodedImage.getImageFormat())) {
       return TriState.NO;
     }
 
-    return TriState.valueOf(request.shouldEncrypt());
+    return TriState.valueOf(request.shouldDecrypt());
   }
 }

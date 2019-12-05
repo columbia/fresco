@@ -353,7 +353,7 @@ public class ProducerSequenceFactory {
 
       switch (imageRequest.getSourceUriType()) {
         case SOURCE_TYPE_NETWORK:
-          return getNetworkFetchSequence(imageRequest.shouldEncrypt(), imageRequest.shouldDecrypt());
+          return getNetworkFetchSequence();
         case SOURCE_TYPE_LOCAL_VIDEO_FILE:
           return getLocalVideoFileFetchSequence();
         case SOURCE_TYPE_LOCAL_IMAGE_FILE:
@@ -387,8 +387,7 @@ public class ProducerSequenceFactory {
    * bitmap cache -> decode -> multiplex -> encoded cache -> disk cache -> (webp transcode) ->
    * network fetch.
    */
-  private synchronized Producer<CloseableReference<CloseableImage>> getNetworkFetchSequence(
-          boolean shouldEncrypt, boolean shouldDecrypt) {
+  private synchronized Producer<CloseableReference<CloseableImage>> getNetworkFetchSequence() {
     if (FrescoSystrace.isTracing()) {
       FrescoSystrace.beginSection("ProducerSequenceFactory#getNetworkFetchSequence");
     }
@@ -397,8 +396,7 @@ public class ProducerSequenceFactory {
         FrescoSystrace.beginSection("ProducerSequenceFactory#getNetworkFetchSequence:init");
       }
       mNetworkFetchSequence =
-          newBitmapCacheGetToDecodeSequence(
-                  getCommonNetworkFetchToEncodedMemorySequence(), shouldEncrypt, shouldDecrypt);
+          newBitmapCacheGetToDecodeSequence(getCommonNetworkFetchToEncodedMemorySequence());
       if (FrescoSystrace.isTracing()) {
         FrescoSystrace.endSection();
       }
@@ -704,8 +702,7 @@ public class ProducerSequenceFactory {
       inputProducer = mProducerFactory.newAddImageTransformMetaDataProducer(inputProducer);
       inputProducer =
           mProducerFactory.newResizeAndRotateProducer(inputProducer, true, mImageTranscoderFactory);
-      mDataFetchSequence = newBitmapCacheGetToDecodeSequence(
-              inputProducer, false, false);
+      mDataFetchSequence = newBitmapCacheGetToDecodeSequence(inputProducer);
     }
     return mDataFetchSequence;
   }
@@ -736,31 +733,25 @@ public class ProducerSequenceFactory {
     inputProducer = newEncodedCacheMultiplexToTranscodeSequence(inputProducer);
     Producer<EncodedImage> inputProducerAfterDecode =
         newLocalTransformationsSequence(inputProducer, thumbnailProducers);
-    return newBitmapCacheGetToDecodeSequence(
-            inputProducerAfterDecode, false, false);
+    return newBitmapCacheGetToDecodeSequence(inputProducerAfterDecode);
   }
 
   /**
    * Same as {@code newBitmapCacheGetToBitmapCacheSequence} but with an extra DecodeProducer.
    *
    * @param inputProducer producer providing the input to the decode
-   * @param shouldEncrypt boolean if should encrypt before decoding
    * @return bitmap cache get to decode sequence
    */
   private Producer<CloseableReference<CloseableImage>> newBitmapCacheGetToDecodeSequence(
-      Producer<EncodedImage> inputProducer, boolean shouldEncrypt, boolean shouldDecrypt) {
+      Producer<EncodedImage> inputProducer) {
     if (FrescoSystrace.isTracing()) {
       FrescoSystrace.beginSection("ProducerSequenceFactory#newBitmapCacheGetToDecodeSequence");
     }
 
-    Producer<EncodedImage> newProducer = inputProducer;
-    if (shouldEncrypt) {
-      newProducer = mProducerFactory.newEncryptProducer(inputProducer, mImageEncryptorFactory);
-    }
-
-    if (shouldDecrypt) {
-      newProducer = mProducerFactory.newDecryptProducer(newProducer, mImageDecryptorFactory);
-    }
+    // Add encrypt/decryptor producers to the pipeline
+    Producer<EncodedImage> newProducer = mProducerFactory
+            .newEncryptProducer(inputProducer, mImageEncryptorFactory);
+    newProducer = mProducerFactory.newDecryptProducer(newProducer, mImageDecryptorFactory);
 
     DecodeProducer decodeProducer = mProducerFactory.newDecodeProducer(newProducer);
     Producer<CloseableReference<CloseableImage>> result =
