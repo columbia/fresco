@@ -270,37 +270,35 @@ static void rotateJpeg(
   jpeg_destroy_compress(&cinfo);
   jpeg_destroy_decompress(&dinfo);
 }
-/*
-static void testModifyDct(struct jpeg_compress_struct& cinfo) {
-  int ci = 0; // between 0 and number of image component, range [0, 3)
-  int by = 0; // between 0 and compptr_one->height_in_blocks
-  int bx = 0; // between 0 and compptr_one->width_in_blocks
-  int bi = 0; // between 0 and 64 (8x8)
-  JBLOCKARRAY buffer_one;
-  JCOEFPTR blockptr_one;
-  jpeg_component_info* compptr_one;
 
-  // Contains one array per component, range [0, 3)
-  jvirt_barray_ptr *coeffs_array = jpeg_read_coefficients(&cinfo);
+static void iterateDCTs(j_decompress_ptr dinfo, jvirt_barray_ptr* src_coefs) {
+  // Iterate over every DCT coefficient in the image, for every color component
+  for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
+    jpeg_component_info* comp_info = dinfo->comp_info + comp_i;
 
-  // .comp_info contains per-component parameters (JPEG color components)
-  // Unused at the moment, but this is used for iterating:
-  // for (int by = 0; by < compptr_one->height_in_blocks; by++) { ... }
-  // and
-  // for (int bx = 0; by < compptr_one->width_in_blocks; bx++) { ... }
-  compptr_one = cinfo.comp_info + ci; // why is this not cinfo.comp_info[ci]?
+    LOGD("encryptJpeg iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
 
-  // Get one "row" of DCTs blocks (MCUs?)
-  buffer_one = (cinfo.mem->access_virt_barray)((j_common_ptr)&cinfo, coeffs_array[ci], by, (JDIMENSION)1, FALSE);
+    for (int y = 0; y < comp_info->height_in_blocks; y++) {
+      JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
 
-  // I THINK get the DC value in index 0 from the MCU at index bx
-  // (so the values above index 0 are ACs?)
-  blockptr_one = buffer_one[0][bx];
+      // mcu_buff[y][x][c]
+      // - the cth coefficient
+      // - the xth horizontal block
+      // - the yth vertical block
+      mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr)dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
 
-  // Modify one of the coefficients in the DCT matrix [0, 64)
-  blockptr_one[bi]++;
+      for (int x = 0; x < comp_info->width_in_blocks; x++) {
+        JCOEFPTR mcu_ptr; // Pointer to 8x8 block of coefficients (I think)
+        mcu_ptr = mcu_buff[0][x];
+
+        for (int i = 0; i < DCTSIZE2; i++) {
+          mcu_ptr[i] = mcu_ptr[i] * -1; // Modify DC coefficient
+          // LOGD("Modified DC coefficient from %d to %d", mcu_ptr[i] * -1, mcu_ptr[i]);
+        }
+      }
+    }
+  }
 }
-*/
 
 void encryptJpeg(
     JNIEnv* env,
@@ -318,8 +316,6 @@ void encryptJpeg(
     return;
   }
 
-  LOGD("encryptJpeg LOGD");
-
   // prepare decompress struct
   struct jpeg_decompress_struct dinfo;
   initDecompressStruct(dinfo, error_handler, source);
@@ -329,43 +325,17 @@ void encryptJpeg(
   initCompressStruct(cinfo, dinfo, error_handler, destination);
 
   // get DCT coefficients, 64 for 8x8 DCT blocks (first is DC, remaining 63 are AC?)
-  jvirt_barray_ptr* srccoefs = jpeg_read_coefficients(&dinfo);
+  jvirt_barray_ptr* src_coefs = jpeg_read_coefficients(&dinfo);
+
   // initialize with default params, then copy the ones needed for lossless transcoding
   jpeg_copy_critical_parameters(&dinfo, &cinfo);
-
-  //jvirt_barray_ptr* dstcoefs = jtransform_adjust_parameters(&dinfo, &cinfo, srccoefs, &xinfo);
-  //jpeg_write_coefficients(&cinfo, dstcoefs);
-
   jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
 
-  // Iterate over every DCT coefficient in the image, for every color component
-  for (int comp_i = 0; comp_i < dinfo.num_components; comp_i++) {
-    jpeg_component_info* comp_info = dinfo.comp_info + comp_i;
+  iterateDCTs(&dinfo, src_coefs);
 
-    LOGD("encryptJpeg iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
+  jpeg_write_coefficients(&cinfo, src_coefs);
 
-    for (int y = 0; y < comp_info->height_in_blocks; y++) {
-      JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
-
-      // mcu_buff[y][x][c]
-      // - the cth coefficient
-      // - the xth horizontal block
-      // - the yth vertical block
-      mcu_buff = (dinfo.mem->access_virt_barray)((j_common_ptr)&dinfo, srccoefs[comp_i], y, (JDIMENSION) 1, TRUE);
-
-      for (int x = 0; x < comp_info->width_in_blocks; x++) {
-        JCOEFPTR mcu_ptr; // Pointer to 8x8 block of coefficients (I think)
-        mcu_ptr = mcu_buff[0][x];
-
-        for (int i = 0; i < DCTSIZE2; i++) {
-          mcu_ptr[i] = mcu_ptr[i] * -1; // Modify DC coefficient
-          LOGD("Modified DC coefficient from %d to %d", mcu_ptr[i] * -1, mcu_ptr[i]);
-        }
-      }
-    }
-  }
-
-  jpeg_write_coefficients(&cinfo, srccoefs);
+  LOGD("encryptJpeg finished");
 
   // tear down
   jpeg_finish_compress(&cinfo);
