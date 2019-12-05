@@ -24,6 +24,7 @@ import com.facebook.common.media.MediaUtils;
 import com.facebook.common.memory.PooledByteBuffer;
 import com.facebook.common.references.CloseableReference;
 import com.facebook.common.webp.WebpSupportStatus;
+import com.facebook.imagepipeline.encryptor.ImageEncryptorFactory;
 import com.facebook.imagepipeline.image.CloseableImage;
 import com.facebook.imagepipeline.image.EncodedImage;
 import com.facebook.imagepipeline.producers.BitmapMemoryCacheKeyMultiplexProducer;
@@ -31,6 +32,7 @@ import com.facebook.imagepipeline.producers.BitmapMemoryCacheProducer;
 import com.facebook.imagepipeline.producers.DecodeProducer;
 import com.facebook.imagepipeline.producers.DiskCacheReadProducer;
 import com.facebook.imagepipeline.producers.EncodedMemoryCacheProducer;
+import com.facebook.imagepipeline.producers.EncryptProducer;
 import com.facebook.imagepipeline.producers.LocalAssetFetchProducer;
 import com.facebook.imagepipeline.producers.LocalContentUriFetchProducer;
 import com.facebook.imagepipeline.producers.LocalFileFetchProducer;
@@ -67,6 +69,7 @@ public class ProducerSequenceFactory {
   private final boolean mUseBitmapPrepareToDraw;
   private final boolean mDiskCacheEnabled;
   private final ImageTranscoderFactory mImageTranscoderFactory;
+  private final ImageEncryptorFactory mImageEncryptorFactory;
 
   // Saved sequences
   @VisibleForTesting Producer<CloseableReference<CloseableImage>> mNetworkFetchSequence;
@@ -117,7 +120,8 @@ public class ProducerSequenceFactory {
       boolean useBitmapPrepareToDraw,
       boolean partialImageCachingEnabled,
       boolean diskCacheEnabled,
-      ImageTranscoderFactory imageTranscoderFactory) {
+      ImageTranscoderFactory imageTranscoderFactory,
+      ImageEncryptorFactory imageEncryptorFactory) {
     mContentResolver = contentResolver;
     mProducerFactory = producerFactory;
     mNetworkFetcher = networkFetcher;
@@ -132,6 +136,7 @@ public class ProducerSequenceFactory {
     mPartialImageCachingEnabled = partialImageCachingEnabled;
     mDiskCacheEnabled = diskCacheEnabled;
     mImageTranscoderFactory = imageTranscoderFactory;
+    mImageEncryptorFactory = imageEncryptorFactory;
   }
 
   /**
@@ -344,7 +349,7 @@ public class ProducerSequenceFactory {
 
       switch (imageRequest.getSourceUriType()) {
         case SOURCE_TYPE_NETWORK:
-          return getNetworkFetchSequence();
+          return getNetworkFetchSequence(imageRequest.shouldEncrypt());
         case SOURCE_TYPE_LOCAL_VIDEO_FILE:
           return getLocalVideoFileFetchSequence();
         case SOURCE_TYPE_LOCAL_IMAGE_FILE:
@@ -378,7 +383,8 @@ public class ProducerSequenceFactory {
    * bitmap cache -> decode -> multiplex -> encoded cache -> disk cache -> (webp transcode) ->
    * network fetch.
    */
-  private synchronized Producer<CloseableReference<CloseableImage>> getNetworkFetchSequence() {
+  private synchronized Producer<CloseableReference<CloseableImage>> getNetworkFetchSequence(
+          boolean shouldEncrypt) {
     if (FrescoSystrace.isTracing()) {
       FrescoSystrace.beginSection("ProducerSequenceFactory#getNetworkFetchSequence");
     }
@@ -387,7 +393,7 @@ public class ProducerSequenceFactory {
         FrescoSystrace.beginSection("ProducerSequenceFactory#getNetworkFetchSequence:init");
       }
       mNetworkFetchSequence =
-          newBitmapCacheGetToDecodeSequence(getCommonNetworkFetchToEncodedMemorySequence());
+          newBitmapCacheGetToDecodeSequence(getCommonNetworkFetchToEncodedMemorySequence(), shouldEncrypt);
       if (FrescoSystrace.isTracing()) {
         FrescoSystrace.endSection();
       }
@@ -693,7 +699,7 @@ public class ProducerSequenceFactory {
       inputProducer = mProducerFactory.newAddImageTransformMetaDataProducer(inputProducer);
       inputProducer =
           mProducerFactory.newResizeAndRotateProducer(inputProducer, true, mImageTranscoderFactory);
-      mDataFetchSequence = newBitmapCacheGetToDecodeSequence(inputProducer);
+      mDataFetchSequence = newBitmapCacheGetToDecodeSequence(inputProducer, false);
     }
     return mDataFetchSequence;
   }
@@ -724,21 +730,28 @@ public class ProducerSequenceFactory {
     inputProducer = newEncodedCacheMultiplexToTranscodeSequence(inputProducer);
     Producer<EncodedImage> inputProducerAfterDecode =
         newLocalTransformationsSequence(inputProducer, thumbnailProducers);
-    return newBitmapCacheGetToDecodeSequence(inputProducerAfterDecode);
+    return newBitmapCacheGetToDecodeSequence(inputProducerAfterDecode, false);
   }
 
   /**
    * Same as {@code newBitmapCacheGetToBitmapCacheSequence} but with an extra DecodeProducer.
    *
    * @param inputProducer producer providing the input to the decode
+   * @param shouldEncrypt boolean if should encrypt before decoding
    * @return bitmap cache get to decode sequence
    */
   private Producer<CloseableReference<CloseableImage>> newBitmapCacheGetToDecodeSequence(
-      Producer<EncodedImage> inputProducer) {
+      Producer<EncodedImage> inputProducer, boolean shouldEncrypt) {
     if (FrescoSystrace.isTracing()) {
       FrescoSystrace.beginSection("ProducerSequenceFactory#newBitmapCacheGetToDecodeSequence");
     }
-    DecodeProducer decodeProducer = mProducerFactory.newDecodeProducer(inputProducer);
+
+    Producer<EncodedImage> newProducer = inputProducer;
+    if (shouldEncrypt) {
+      newProducer = mProducerFactory.newEncryptProducer(inputProducer, mImageEncryptorFactory);
+    }
+
+    DecodeProducer decodeProducer = mProducerFactory.newDecodeProducer(newProducer);
     Producer<CloseableReference<CloseableImage>> result =
         newBitmapCacheGetToBitmapCacheSequence(decodeProducer);
     if (FrescoSystrace.isTracing()) {
@@ -845,6 +858,12 @@ public class ProducerSequenceFactory {
       mPostprocessorSequences.put(inputProducer, postprocessedBitmapMemoryCacheProducer);
     }
     return mPostprocessorSequences.get(inputProducer);
+  }
+
+  /** encrypt producer -> inputProducer */
+  private synchronized Producer<EncodedImage> getEncryptSequence(
+          Producer<EncodedImage> inputProducer) {
+    return mProducerFactory.newEncryptProducer(inputProducer, mImageEncryptorFactory);
   }
 
   /** swallow result producer -> inputProducer */

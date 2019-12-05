@@ -34,7 +34,10 @@ import com.facebook.imagepipeline.cache.MemoryCache;
 import com.facebook.imagepipeline.decoder.DefaultImageDecoder;
 import com.facebook.imagepipeline.decoder.ImageDecoder;
 import com.facebook.imagepipeline.drawable.DrawableFactory;
+import com.facebook.imagepipeline.encryptor.ImageEncryptorFactory;
 import com.facebook.imagepipeline.image.CloseableImage;
+import com.facebook.imagepipeline.nativecode.NativeImageEncryptorFactory;
+import com.facebook.imagepipeline.nativecode.NativeImageTranscoderFactory;
 import com.facebook.imagepipeline.platform.PlatformDecoder;
 import com.facebook.imagepipeline.platform.PlatformDecoderFactory;
 import com.facebook.imagepipeline.producers.ExperimentalThreadHandoffProducerQueueImpl;
@@ -126,6 +129,7 @@ public class ImagePipelineFactory {
   private ImageDecoder mImageDecoder;
   private ImagePipeline mImagePipeline;
   private ImageTranscoderFactory mImageTranscoderFactory;
+  private ImageEncryptorFactory mImageEncryptorFactory;
   private ProducerFactory mProducerFactory;
   private ProducerSequenceFactory mProducerSequenceFactory;
   private BufferedDiskCache mSmallImageBufferedDiskCache;
@@ -363,7 +367,8 @@ public class ImagePipelineFactory {
               useBitmapPrepareToDraw,
               mConfig.getExperiments().isPartialImageCachingEnabled(),
               mConfig.isDiskCacheEnabled(),
-              getImageTranscoderFactory());
+              getImageTranscoderFactory(),
+              getImageEncryptorFactory());
     }
     return mProducerSequenceFactory;
   }
@@ -419,6 +424,14 @@ public class ImagePipelineFactory {
       }
     }
     return mImageTranscoderFactory;
+  }
+
+  private ImageEncryptorFactory getImageEncryptorFactory() {
+    if (mImageEncryptorFactory == null) {
+      mImageEncryptorFactory = NativeImageEncryptorFactory
+              .getNativeImageEncryptorFactory(mConfig.getExperiments().getMaxBitmapSize());
+    }
+    return mImageEncryptorFactory;
   }
 
   @Nullable

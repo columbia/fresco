@@ -33,7 +33,7 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
     mUri = sampleUris().createSampleUri(ImageUriProvider.ImageSize.M);
     mSimpleDraweeView = (SimpleDraweeView) view.findViewById(R.id.drawee_view);
 
-    mSimpleDraweeView.setImageURI(mUri);
+    setEncryptOptions();
 
     view.findViewById(R.id.btn_random_uri)
             .setOnClickListener(
