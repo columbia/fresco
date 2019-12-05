@@ -16,7 +16,8 @@ LOCAL_SRC_FILES := \
 	jpeg/jpeg_memory_io.cpp \
 	jpeg/jpeg_stream_wrappers.cpp \
 	transformations.cpp \
-	JpegTranscoder.cpp
+	JpegTranscoder.cpp \
+	JpegEncryptor.cpp
 
 CXX11_FLAGS := -std=c++11
 LOCAL_CFLAGS += $(CXX11_FLAGS)

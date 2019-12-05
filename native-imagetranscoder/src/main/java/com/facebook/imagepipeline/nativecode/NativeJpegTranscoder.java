@@ -216,27 +216,4 @@ public class NativeJpegTranscoder implements ImageTranscoder {
       int scaleNominator,
       int quality)
       throws IOException;
-
-  /**
-   * Encrypts a JPEG.
-   *
-   * @param inputStream The {@link InputStream} of the image that will be encrypted.
-   * @param outputStream The {@link OutputStream} where the newly created image is written to.
-   */
-  @VisibleForTesting
-  public static void encryptJpeg(
-          final InputStream inputStream,
-          final OutputStream outputStream)
-          throws IOException {
-    NativeJpegTranscoderSoLoader.ensure();
-    nativeEncryptJpeg(
-            Preconditions.checkNotNull(inputStream),
-            Preconditions.checkNotNull(outputStream));
-  }
-
-  @DoNotStrip
-  private static native void nativeEncryptJpeg(
-          InputStream inputStream,
-          OutputStream outputStream)
-          throws IOException;
 }

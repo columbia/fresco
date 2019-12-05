@@ -22,6 +22,7 @@ import com.facebook.imagepipeline.cache.CacheKeyFactory;
 import com.facebook.imagepipeline.cache.MemoryCache;
 import com.facebook.imagepipeline.decoder.ImageDecoder;
 import com.facebook.imagepipeline.decoder.ProgressiveJpegConfig;
+import com.facebook.imagepipeline.encryptor.ImageEncryptorFactory;
 import com.facebook.imagepipeline.image.CloseableImage;
 import com.facebook.imagepipeline.image.EncodedImage;
 import com.facebook.imagepipeline.producers.AddImageTransformMetaDataProducer;
@@ -36,6 +37,7 @@ import com.facebook.imagepipeline.producers.DiskCacheReadProducer;
 import com.facebook.imagepipeline.producers.DiskCacheWriteProducer;
 import com.facebook.imagepipeline.producers.EncodedCacheKeyMultiplexProducer;
 import com.facebook.imagepipeline.producers.EncodedMemoryCacheProducer;
+import com.facebook.imagepipeline.producers.EncryptProducer;
 import com.facebook.imagepipeline.producers.LocalAssetFetchProducer;
 import com.facebook.imagepipeline.producers.LocalContentUriFetchProducer;
 import com.facebook.imagepipeline.producers.LocalContentUriThumbnailFetchProducer;
@@ -306,6 +308,15 @@ public class ProducerFactory {
         inputProducer,
         isResizingEnabled,
         imageTranscoderFactory);
+  }
+
+  public EncryptProducer newEncryptProducer(
+          Producer<EncodedImage> inputProducer,
+          ImageEncryptorFactory imageEncryptorFactory) {
+    return new EncryptProducer(mExecutorSupplier.forBackgroundTasks(),
+            mPooledByteBufferFactory,
+            inputProducer,
+            imageEncryptorFactory);
   }
 
   public static <T> SwallowResultProducer<T> newSwallowResultProducer(Producer<T> inputProducer) {
