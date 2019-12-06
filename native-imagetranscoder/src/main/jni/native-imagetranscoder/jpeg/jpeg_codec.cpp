@@ -271,6 +271,30 @@ static void rotateJpeg(
   jpeg_destroy_decompress(&dinfo);
 }
 
+static void generateChaoticSequence(
+    float* chaotic_seq,
+    int n // The number of DC coefficients and also the length of chaotic_seq
+    /*
+    float x_0, // Secret value
+    float m_u // Secret value
+    */) {
+  float x_0 = 0.5; // Should choose randomly from [0, 1.0]
+  float mu = 3.57; // Should choose randomly from [3.57, 4.0]
+
+  chaotic_seq[0] = mu * x_0 * (1 - x_0);
+
+  LOGD("generateChaoticSequence chaotic_seq[0]: %f", chaotic_seq[0]);
+
+  for (int i = 1; i < n; i++) {
+    float x_n = chaotic_seq[i - 1];
+    chaotic_seq[i] = mu * x_n * (1 - x_n);
+    //LOGD("Generated chaotic_seq value: %f", chaotic_seq[i]);
+  }
+
+  std::sort(chaotic_seq, chaotic_seq + n, std::less<float>());
+}
+
+// The inner loop iterates over all the DC and AC coefficients in all 8x8 DCT blocks.
 static void iterateDCTs(j_decompress_ptr dinfo, jvirt_barray_ptr* src_coefs) {
   // Iterate over every DCT coefficient in the image, for every color component
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
@@ -292,9 +316,42 @@ static void iterateDCTs(j_decompress_ptr dinfo, jvirt_barray_ptr* src_coefs) {
         mcu_ptr = mcu_buff[0][x];
 
         for (int i = 0; i < DCTSIZE2; i++) {
-          mcu_ptr[i] = mcu_ptr[i] * -1; // Modify DC coefficient
-          // LOGD("Modified DC coefficient from %d to %d", mcu_ptr[i] * -1, mcu_ptr[i]);
+          mcu_ptr[i] = mcu_ptr[i] * -1; // Modify DC and AC coefficients
         }
+      }
+    }
+  }
+}
+
+// Only iterates over DC coefficients, one per 8x8 DCT block
+static void iterateDCs(
+    j_decompress_ptr dinfo,
+    jvirt_barray_ptr* src_coefs,
+    float* chaotic_seq,
+    int chaotic_seq_n) {
+  int chaotic_i = 0;
+
+  // Iterate over every DCT coefficient in the image, for every color component
+  for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
+    jpeg_component_info* comp_info = dinfo->comp_info + comp_i;
+
+    LOGD("iterateDCs iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
+
+    for (int y = 0; y < comp_info->height_in_blocks; y++) {
+      JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
+
+      // mcu_buff[y][x][c]
+      // - the cth coefficient
+      // - the xth horizontal block
+      // - the yth vertical block
+      mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr)dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
+
+      for (int x = 0; x < comp_info->width_in_blocks; x++) {
+        JCOEFPTR mcu_ptr; // Pointer to 8x8 block of coefficients (I think)
+        mcu_ptr = mcu_buff[0][x];
+
+        // Modify DC coefficient
+        mcu_ptr[0] = mcu_ptr[0] * chaotic_seq[chaotic_i++];
       }
     }
   }
@@ -311,6 +368,8 @@ void decryptJpeg(
   JpegErrorHandler error_handler{env};
   struct jpeg_source_mgr& source = is_wrapper.public_fields;
   struct jpeg_destination_mgr& destination = os_wrapper.public_fields;
+  float* chaotic_seq;
+  int n_blocks;
 
   if (setjmp(error_handler.setjmpBuffer)) {
     return;
@@ -331,13 +390,20 @@ void decryptJpeg(
   jpeg_copy_critical_parameters(&dinfo, &cinfo);
   jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
 
-  iterateDCTs(&dinfo, src_coefs);
+  n_blocks = dinfo.comp_info->height_in_blocks * dinfo.comp_info->width_in_blocks;
+  chaotic_seq = (float *) malloc(n_blocks * sizeof(float));
+  if (chaotic_seq == NULL) {
+    LOGE("decryptJpeg failed to alloc memory for chaotic_seq");
+    goto teardown;
+  }
+  generateChaoticSequence(chaotic_seq, n_blocks);
+  iterateDCs(&dinfo, src_coefs, chaotic_seq, n_blocks);
 
   jpeg_write_coefficients(&cinfo, src_coefs);
 
   LOGD("decryptJpeg finished");
 
-  // tear down
+teardown:
   jpeg_finish_compress(&cinfo);
   jpeg_destroy_compress(&cinfo);
   jpeg_destroy_decompress(&dinfo);
