@@ -272,7 +272,7 @@ static void rotateJpeg(
 }
 
 static void generateChaoticSequence(
-    float* chaotic_seq,
+    float *chaotic_seq,
     int n // The number of DC coefficients and also the length of chaotic_seq
     /*
     float x_0, // Secret value
@@ -298,7 +298,7 @@ static void generateChaoticSequence(
 static void iterateDCTs(j_decompress_ptr dinfo, jvirt_barray_ptr* src_coefs) {
   // Iterate over every DCT coefficient in the image, for every color component
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
-    jpeg_component_info* comp_info = dinfo->comp_info + comp_i;
+    jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
 
     LOGD("iterateDCTs iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
 
@@ -323,22 +323,58 @@ static void iterateDCTs(j_decompress_ptr dinfo, jvirt_barray_ptr* src_coefs) {
   }
 }
 
+static int sameSign(JCOEF a, JCOEF b) {
+  return (a < 0 && b < 0) || (a >= 0 && b >= 0);
+}
+
+struct chaos_dc {
+  float chaos;
+  JCOEF dc;
+};
+
+static void permuteDCGroup(
+    JBLOCKARRAY mcu_buff,
+    int s_start,
+    int s_end,
+    float *chaotic_seq,
+    int chaotic_seq_n) {
+  int num_blocks = s_end - s_start;
+  struct chaos_dc chaos_dcs[num_blocks];
+  int k = 0;
+
+  LOGD("permuteDCGroup num_blocks=%d, s_start=%d, s_end=%d", num_blocks, s_start, s_end);
+
+  // Permute the values in blocks mcu_buff[0][s_start, s_end]
+  // according to the chaotic sequence.
+  // mcu_buff[0] is constant because we are just looking at one row at a time.
+  for (int i = s_start; i < s_end; i++) {
+    int chaos_i = i - s_start;
+    JCOEFPTR mcu_ptr = mcu_buff[0][i];
+
+    chaos_dcs[chaos_i].chaos = chaotic_seq[k++];
+    chaos_dcs[chaos_i].dc = mcu_ptr[0];
+    LOGD("permuteDCGroup chaos_dc[%d].dc = %d", chaos_i, chaos_dcs[i].dc);
+  }
+}
+
 // Only iterates over DC coefficients, one per 8x8 DCT block
 static void iterateDCs(
     j_decompress_ptr dinfo,
-    jvirt_barray_ptr* src_coefs,
-    float* chaotic_seq,
+    jvirt_barray_ptr *src_coefs,
+    float *chaotic_seq,
     int chaotic_seq_n) {
   int chaotic_i = 0;
 
   // Iterate over every DCT coefficient in the image, for every color component
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
-    jpeg_component_info* comp_info = dinfo->comp_info + comp_i;
+    jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
 
     LOGD("iterateDCs iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
 
     for (int y = 0; y < comp_info->height_in_blocks; y++) {
       JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
+      int s_start = 0;
+      int s_end = 0;
 
       // mcu_buff[y][x][c]
       // - the cth coefficient
@@ -348,17 +384,32 @@ static void iterateDCs(
 
       for (int x = 0; x < comp_info->width_in_blocks; x++) {
         JCOEFPTR mcu_ptr; // Pointer to 8x8 block of coefficients (I think)
-        mcu_ptr = mcu_buff[0][x];
 
-        // Modify DC coefficient
-        mcu_ptr[0] = mcu_ptr[0] * chaotic_seq[chaotic_i++];
+        mcu_ptr = mcu_buff[0][x];
+        LOGD("iterateDCs horizontal_block_x=%d, DC=%d", x, mcu_ptr[0]);
+
+        if (s_end != 0 && !sameSign(mcu_ptr[0], mcu_buff[0][x - 1][0])) {
+          LOGD("iterateDCs sameSign inputs: %d, %d", mcu_ptr[0], mcu_buff[0][x - 1][0]);
+          // Permute same_sign_dcs then start the new group
+          permuteDCGroup(mcu_buff, s_start, s_end, chaotic_seq, chaotic_seq_n);
+
+          // Start the new group
+          s_start = x;
+          s_end = x;
+          LOGD("iterateDCs s_start=%d, s_end=%d", s_start, s_end);
+        } else {
+          s_end++;
+        }
       }
+
+      // Permute the last same-sign DC group in the row
+      permuteDCGroup(mcu_buff, s_start, s_end, chaotic_seq, chaotic_seq_n);
     }
   }
 }
 
 void decryptJpeg(
-    JNIEnv* env,
+    JNIEnv *env,
     jobject is,
     jobject os) {
   JpegInputStreamWrapper is_wrapper{env, is};
@@ -384,7 +435,7 @@ void decryptJpeg(
   initCompressStruct(cinfo, dinfo, error_handler, destination);
 
   // get DCT coefficients, 64 for 8x8 DCT blocks (first is DC, remaining 63 are AC?)
-  jvirt_barray_ptr* src_coefs = jpeg_read_coefficients(&dinfo);
+  jvirt_barray_ptr *src_coefs = jpeg_read_coefficients(&dinfo);
 
   // initialize with default params, then copy the ones needed for lossless transcoding
   jpeg_copy_critical_parameters(&dinfo, &cinfo);
@@ -410,7 +461,7 @@ teardown:
 }
 
 void encryptJpeg(
-    JNIEnv* env,
+    JNIEnv *env,
     jobject is,
     jobject os) {
   JpegInputStreamWrapper is_wrapper{env, is};
@@ -434,7 +485,7 @@ void encryptJpeg(
   initCompressStruct(cinfo, dinfo, error_handler, destination);
 
   // get DCT coefficients, 64 for 8x8 DCT blocks (first is DC, remaining 63 are AC?)
-  jvirt_barray_ptr* src_coefs = jpeg_read_coefficients(&dinfo);
+  jvirt_barray_ptr *src_coefs = jpeg_read_coefficients(&dinfo);
 
   // initialize with default params, then copy the ones needed for lossless transcoding
   jpeg_copy_critical_parameters(&dinfo, &cinfo);
