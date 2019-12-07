@@ -271,8 +271,26 @@ static void rotateJpeg(
   jpeg_destroy_decompress(&dinfo);
 }
 
+struct chaos_dc {
+  float chaos;
+  unsigned int chaos_pos;
+
+  JCOEF dc;
+};
+
+static bool chaos_sorter(struct chaos_dc left, struct chaos_dc right) {
+  if (left.chaos == right.chaos) {
+    return left.chaos_pos < right.chaos_pos;
+  }
+  return left.chaos < right.chaos;
+}
+
+static bool chaos_pos_sorter(struct chaos_dc left, struct chaos_dc right) {
+  return left.chaos_pos < right.chaos_pos;
+}
+
 static void generateChaoticSequence(
-    float *chaotic_seq,
+    struct chaos_dc *chaotic_seq,
     int n // The number of DC coefficients and also the length of chaotic_seq
     /*
     float x_0, // Secret value
@@ -281,17 +299,19 @@ static void generateChaoticSequence(
   float x_0 = 0.5; // Should choose randomly from [0, 1.0]
   float mu = 3.57; // Should choose randomly from [3.57, 4.0]
 
-  chaotic_seq[0] = mu * x_0 * (1 - x_0);
+  chaotic_seq[0].chaos = mu * x_0 * (1 - x_0);
+  chaotic_seq[0].chaos_pos = 0;
 
-  LOGD("generateChaoticSequence chaotic_seq[0]: %f", chaotic_seq[0]);
+  LOGD("generateChaoticSequence chaotic_seq[0].chaos: %f", chaotic_seq[0].chaos);
 
   for (int i = 1; i < n; i++) {
-    float x_n = chaotic_seq[i - 1];
-    chaotic_seq[i] = mu * x_n * (1 - x_n);
+    float x_n = chaotic_seq[i - 1].chaos;
+    chaotic_seq[i].chaos = mu * x_n * (1 - x_n);
+    chaotic_seq[i].chaos_pos = i;
     //LOGD("Generated chaotic_seq value: %f", chaotic_seq[i]);
   }
 
-  std::sort(chaotic_seq, chaotic_seq + n, std::less<float>());
+  std::sort(chaotic_seq, chaotic_seq + n, &chaos_sorter);
 }
 
 // The inner loop iterates over all the DC and AC coefficients in all 8x8 DCT blocks.
@@ -327,16 +347,11 @@ static int sameSign(JCOEF a, JCOEF b) {
   return (a < 0 && b < 0) || (a >= 0 && b >= 0);
 }
 
-struct chaos_dc {
-  float chaos;
-  JCOEF dc;
-};
-
 static void permuteDCGroup(
     JBLOCKARRAY mcu_buff,
     int s_start,
     int s_end,
-    float *chaotic_seq,
+    struct chaos_dc *chaotic_seq,
     int chaotic_seq_n) {
   int num_blocks = s_end - s_start;
   struct chaos_dc chaos_dcs[num_blocks];
@@ -351,9 +366,19 @@ static void permuteDCGroup(
     int chaos_i = i - s_start;
     JCOEFPTR mcu_ptr = mcu_buff[0][i];
 
-    chaos_dcs[chaos_i].chaos = chaotic_seq[k++];
+    chaos_dcs[chaos_i].chaos = chaotic_seq[k].chaos;
+    chaos_dcs[chaos_i].chaos_pos = chaotic_seq[k++].chaos_pos;
     chaos_dcs[chaos_i].dc = mcu_ptr[0];
     LOGD("permuteDCGroup chaos_dc[%d].dc = %d", chaos_i, chaos_dcs[i].dc);
+  }
+
+  std::sort(chaos_dcs, chaos_dcs + num_blocks, &chaos_pos_sorter);
+
+  for (int i = 0; i < num_blocks; i++) {
+    LOGD("permuteDCGroup sorted chaos_dcs[%d]: pos=%u, chaos=%f, dc=%d", i, chaos_dcs[i].chaos_pos, chaos_dcs[i].chaos, chaos_dcs[i].dc);
+    JCOEFPTR mcu_ptr = mcu_buff[0][i];
+
+    mcu_ptr[0] = chaos_dcs[i].dc;
   }
 }
 
@@ -361,7 +386,7 @@ static void permuteDCGroup(
 static void iterateDCs(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr *src_coefs,
-    float *chaotic_seq,
+    struct chaos_dc *chaotic_seq,
     int chaotic_seq_n) {
   int chaotic_i = 0;
 
@@ -382,6 +407,10 @@ static void iterateDCs(
       // - the yth vertical block
       mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr)dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
 
+      // s_start and s_end represent a sliding window of DCs with
+      // the same sign in this row. We then permute the DCs within
+      // a same sign group according to the permuted random chaotic
+      // sequence passed in.
       for (int x = 0; x < comp_info->width_in_blocks; x++) {
         JCOEFPTR mcu_ptr; // Pointer to 8x8 block of coefficients (I think)
 
@@ -419,7 +448,7 @@ void decryptJpeg(
   JpegErrorHandler error_handler{env};
   struct jpeg_source_mgr& source = is_wrapper.public_fields;
   struct jpeg_destination_mgr& destination = os_wrapper.public_fields;
-  float* chaotic_seq;
+  struct chaos_dc *chaotic_seq;
   int n_blocks;
 
   if (setjmp(error_handler.setjmpBuffer)) {
@@ -442,7 +471,7 @@ void decryptJpeg(
   jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
 
   n_blocks = dinfo.comp_info->height_in_blocks * dinfo.comp_info->width_in_blocks;
-  chaotic_seq = (float *) malloc(n_blocks * sizeof(float));
+  chaotic_seq = (struct chaos_dc *) malloc(n_blocks * sizeof(struct chaos_dc));
   if (chaotic_seq == NULL) {
     LOGE("decryptJpeg failed to alloc memory for chaotic_seq");
     goto teardown;
