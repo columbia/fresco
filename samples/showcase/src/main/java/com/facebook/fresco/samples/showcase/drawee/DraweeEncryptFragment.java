@@ -89,6 +89,7 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
   }
 
   private void setEncryptOptions() {
+    pipeline.clearCaches();
     ImageRequest imageRequest =
             ImageRequestBuilder.newBuilderWithSource(mUri)
                     .setEncrypt(true)
@@ -165,6 +166,7 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
 
   private void setDecryptOptions() {
     if (lastEncryptedImage != null) {
+      pipeline.clearCaches();
       ImageRequest imageRequest =
               ImageRequestBuilder.newBuilderWithSource(lastEncryptedImage)
                       .setDecrypt(true)

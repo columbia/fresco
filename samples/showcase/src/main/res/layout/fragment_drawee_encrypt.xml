@@ -41,6 +41,7 @@
         <com.facebook.drawee.view.SimpleDraweeView
             android:id="@+id/drawee_decrypt"
             android:layout_width="match_parent"
-            android:layout_height="@dimen/drawee_height_large" />
+            android:layout_height="@dimen/drawee_height_large"
+            fresco:actualImageScaleType="none" />
     </LinearLayout>
 </ScrollView>
