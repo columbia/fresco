@@ -276,6 +276,7 @@ struct chaos_dc {
   unsigned int chaos_pos;
 
   JCOEF dc;
+  unsigned int block_pos;
 };
 
 static bool chaos_sorter(struct chaos_dc left, struct chaos_dc right) {
@@ -534,12 +535,23 @@ static void iterateAlternatingMCUs(
   // Iterate over every DCT coefficient in the image, for every color component
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
     jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
+    bool *sorted_blocks;
+
+    sorted_blocks = (bool *) malloc(comp_info->width_in_blocks * sizeof(bool));
+    if (sorted_blocks == NULL) {
+      LOGE("iterateAlternatingMCUs failed to alloc memory for sorted_blocks");
+      return;
+    }
+
+    std::fill(sorted_blocks, sorted_blocks + comp_info->width_in_blocks, false);
 
     LOGD("iterateAlternatingMCUs iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
 
     for (int y = 0; y < comp_info->height_in_blocks; y++) {
       JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
       int alternate_x = 0;
+
+      int k, curr_block;
 
       // JDIMENSION 1, so only 1 row is returned, thus [0]
       mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
@@ -558,6 +570,7 @@ static void iterateAlternatingMCUs(
         // Use previous MCU's DC as input to generate the next x_0 and mu
         x_n = scaleToRange(prev_dct_avg, min_dct, max_dct, min_x, max_x);
         mu_n = scaleToRange(prev_dct_avg, min_dct, max_dct, min_mu, max_mu);
+        LOGE("iterateAlternatingMCUs prev_dct_avg=%f, x_n=%f, mu_n=%f", prev_dct_avg, x_n, mu_n);
       }
 
       chaotic_dim_array[y] = (struct chaos_dc *) malloc(comp_info->width_in_blocks * sizeof(struct chaos_dc));
@@ -569,16 +582,63 @@ static void iterateAlternatingMCUs(
       generateChaoticSequence_WithInputs(chaotic_dim_array[y], comp_info->width_in_blocks, x_n, mu_n);
 
       // Alternating DCT modification for reduced security but increased usability
+      // Shuffle pointers to MCUs based on chaotic sequence
+      // ex) Chaotic sequence:
+      //  chaos  1.29   2.96   3.10   3.29   5.22
+      //  pos    3      5      2      1      4
+      //         A      B      C      D      E
+      //         D      C      A      E      B
+      k = alternate_x;
+      curr_block = k;
+      std::fill(sorted_blocks, sorted_blocks + comp_info->width_in_blocks, false);
+      while (k < comp_info->width_in_blocks) {
+        JCOEFPTR mcu_ptr;
+        unsigned int mcu_ptr_new_pos;
+
+        if (sorted_blocks[k]) {
+          k += 2;
+          curr_block = k;
+          prev_dct_avg += mcu_buff[0][0][k];
+          continue;
+        }
+
+        // curr_block is in the wrong spot, look up where it should go
+        mcu_ptr = mcu_buff[0][k];
+        mcu_ptr_new_pos = chaotic_dim_array[y][curr_block].chaos_pos;
+        //LOGD("iterateAlternatingMCUs chaotic_n=%u, y=%d, curr_block=%d, mcu_ptr_new_pos=%d", chaotic_n, y, curr_block, mcu_ptr_new_pos);
+
+        if (mcu_ptr_new_pos != k) {
+          // Swap curr_block with its correct new position, then mark the new position as sorted
+          std::swap(mcu_buff[0][k], mcu_buff[0][mcu_ptr_new_pos]);
+          sorted_blocks[mcu_ptr_new_pos] = true;
+
+          // The block that we swapped with might be in the wrong spot now,
+          // so keep k the same but update curr_block so it can do the look up
+          // on the original position of the block now in position k
+          curr_block = mcu_ptr_new_pos;
+        } else {
+          sorted_blocks[k] = true;
+          k += 2;
+          curr_block = k;
+        }
+      }
+
+      LOGD("iterateAlternatingMCUs finished swapping row");
+
+/*
+      // Alternating DCT modification for reduced security but increased usability
       for (int x = alternate_x; x < comp_info->width_in_blocks; x += 2) {
         JCOEFPTR mcu_ptr = mcu_buff[0][x];
-        prev_dct_avg += mcu_ptr[0];
-
         unsigned int mcu_ptr_new_pos;
+
+        prev_dct_avg += mcu_ptr[0];
 
         // Shuffle pointers to MCUs based on chaotic sequence
         // ex) Chaotic sequence:
         //  chaos  1.29   2.96   3.10   3.29   5.22
         //  pos    3      5      2      1      4
+        //         A      B      C      D      E
+        //         D      C      A      E      B
         mcu_ptr_new_pos = chaotic_dim_array[y][x].chaos_pos;
         LOGD("iterateAlternatingMCUs chaotic_n=%u, y=%d, x=%d, mcu_ptr_new_pos=%d", chaotic_n, y, x, mcu_ptr_new_pos);
 
@@ -586,10 +646,12 @@ static void iterateAlternatingMCUs(
           std::swap(mcu_buff[0][mcu_ptr_new_pos], mcu_buff[0][x]);
         }
       }
-
+*/
       free(chaotic_dim_array[y]);
       prev_dct_avg /= comp_info->width_in_blocks;
     }
+
+    free(sorted_blocks);
   }
 }
 
