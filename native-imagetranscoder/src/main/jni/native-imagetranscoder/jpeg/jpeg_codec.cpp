@@ -525,8 +525,8 @@ static void iterateAlternatingMCUs(
     struct chaos_dc **chaotic_dim_array,
     int chaotic_n) {
   int chaotic_i = 0;
-  float x_0 = 0.5; // Should choose randomly from [0, 1.0]
-  float mu = 3.57; // Should choose randomly from [3.57, 4.0]
+  float x_0 = 0.5; // Should choose from [0, 1.0] - use (He 2018)'s approach for creating a key as inputs
+  float mu = 3.57; // Should choose from [3.57, 4.0]
   float x_n = x_0;
   float mu_n = mu;
   float prev_dct_avg = 0;
@@ -541,6 +541,7 @@ static void iterateAlternatingMCUs(
       JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
       int alternate_x = 0;
 
+      // JDIMENSION 1, so only 1 row is returned, thus [0]
       mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
 
       if (y % 2) {
@@ -559,11 +560,19 @@ static void iterateAlternatingMCUs(
         mu_n = scaleToRange(prev_dct_avg, min_dct, max_dct, min_mu, max_mu);
       }
 
+      chaotic_dim_array[y] = (struct chaos_dc *) malloc(comp_info->width_in_blocks * sizeof(struct chaos_dc));
+      if (chaotic_dim_array[y] == NULL) {
+        LOGE("iterateAlternatingMCUs failed to alloc memory for chaotic_dim_array[%d]", y);
+        return;
+      }
+
       generateChaoticSequence_WithInputs(chaotic_dim_array[y], comp_info->width_in_blocks, x_n, mu_n);
 
       // Alternating DCT modification for reduced security but increased usability
       for (int x = alternate_x; x < comp_info->width_in_blocks; x += 2) {
-        JCOEFPTR mcu_ptr = mcu_buff[0][x]; // JDIMENSION 1 so we only look at one row at the 0th index [0]
+        JCOEFPTR mcu_ptr = mcu_buff[0][x];
+        prev_dct_avg += mcu_ptr[0];
+
         unsigned int mcu_ptr_new_pos;
 
         // Shuffle pointers to MCUs based on chaotic sequence
@@ -576,10 +585,9 @@ static void iterateAlternatingMCUs(
         if (mcu_ptr_new_pos != x) {
           std::swap(mcu_buff[0][mcu_ptr_new_pos], mcu_buff[0][x]);
         }
-
-        prev_dct_avg += mcu_ptr[0];
       }
 
+      free(chaotic_dim_array[y]);
       prev_dct_avg /= comp_info->width_in_blocks;
     }
   }
@@ -623,14 +631,6 @@ void encryptJpegAlternatingMCUs(
 
   LOGD("encryptJpegAlternatingMCUs dinfo.comp_info->height_in_blocks=%d", dinfo.comp_info->height_in_blocks);
 
-  for (int i = 0; i < dinfo.comp_info->height_in_blocks; i++) {
-    chaotic_dim_array[i] = (struct chaos_dc *) malloc(dinfo.comp_info->width_in_blocks * sizeof(struct chaos_dc));
-    if (chaotic_dim_array[i] == NULL) {
-      LOGE("encryptJpegAlternatingMCUs failed to alloc memory for chaotic_dim_array[%d]", i);
-      goto teardown;
-    }
-  }
-
   iterateAlternatingMCUs(&dinfo, src_coefs, chaotic_dim_array, dinfo.comp_info->height_in_blocks);
 
   jpeg_write_coefficients(&cinfo, src_coefs);
@@ -638,10 +638,10 @@ void encryptJpegAlternatingMCUs(
   LOGD("encryptJpegAlternatingMCUs finished");
 
 teardown:
+  free(chaotic_dim_array);
   jpeg_finish_compress(&cinfo);
   jpeg_destroy_compress(&cinfo);
   jpeg_destroy_decompress(&dinfo);
-  free(chaotic_dim_array);
 }
 
 void encryptJpeg(

@@ -31,7 +31,7 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
 
   @Override
   public void onViewCreated(View view, @Nullable Bundle savedInstanceState) {
-    mUri = sampleUris().createSampleUri(ImageUriProvider.ImageSize.M);
+    mUri = sampleUris().createSampleUri(ImageUriProvider.ImageSize.XL);
     mDraweeEncryptView = view.findViewById(R.id.drawee_view);
     mDraweeDecryptView = view.findViewById(R.id.drawee_decrypt);
 
