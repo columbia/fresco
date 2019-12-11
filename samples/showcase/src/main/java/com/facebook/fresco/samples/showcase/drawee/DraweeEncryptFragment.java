@@ -1,5 +1,6 @@
 package com.facebook.fresco.samples.showcase.drawee;
 
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.LayoutInflater;
@@ -51,6 +52,18 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
 
   private ImagePipeline pipeline;
 
+  private MediaScannerConnection.MediaScannerConnectionClient msClient = new MediaScannerConnection.MediaScannerConnectionClient() {
+    @Override
+    public void onMediaScannerConnected() {
+      FLog.d(TAG, "MediaScanner connected");
+    }
+
+    @Override
+    public void onScanCompleted(String path, Uri uri) {
+      FLog.d(TAG, "Done scanning %s", path);
+    }
+  };
+
   @Nullable
   @Override
   public View onCreateView(
@@ -101,7 +114,7 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
 
     final Executor executor = new DefaultExecutorSupplier(1).forBackgroundTasks();
 
-    final File cacheDir = Preconditions.checkNotNull(this.getContext()).getCacheDir();
+    final File encryptedImageDir = Preconditions.checkNotNull(this.getContext()).getExternalFilesDir(null);
 
     DataSubscriber<CloseableReference<PooledByteBuffer>> dataSubscriber =
             new BaseDataSubscriber<CloseableReference<PooledByteBuffer>>() {
@@ -125,13 +138,17 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
                     final InputStream is = encodedImage.getInputStream();
 
                     try {
-                      tempFile = File.createTempFile(mUri.getLastPathSegment(), null, cacheDir);
+                      tempFile = File.createTempFile(mUri.getLastPathSegment(), ".jpg", encryptedImageDir);
                       FileOutputStream fileOutputStream = new FileOutputStream(tempFile);
-                      // ByteStreams.copy(is, fileOutputStream);
 
                       encryptor.encrypt(encodedImage, fileOutputStream, null, null);
 
-                      FLog.d(TAG, "Wrote encrypted JPEG to location %s", tempFile.getAbsolutePath());
+                      MediaScannerConnection.scanFile(getContext(),
+                              new String[]{tempFile.getAbsolutePath()},
+                              null,
+                              msClient);
+
+                      FLog.d(TAG, "Wrote %s as encrypted JPEG to location %s (size: %s bytes)", mUri, tempFile.getAbsolutePath(), tempFile.length() / 8);
 
                       Closeables.close(fileOutputStream, true);
                     } catch (IOException e) {
