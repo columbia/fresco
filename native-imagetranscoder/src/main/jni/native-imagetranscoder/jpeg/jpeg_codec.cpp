@@ -530,7 +530,7 @@ static void encryptAlternatingMCUs(
   float mu = 3.57; // Should choose from [3.57, 4.0]
   float x_n = x_0;
   float mu_n = mu;
-  float prev_dct_avg = 0;
+  double prev_dct_avg = 0;
 
   // Iterate over every DCT coefficient in the image, for every color component
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
@@ -567,8 +567,8 @@ static void encryptAlternatingMCUs(
         float min_mu = 3.57;
         float max_mu = 4.0;
         // Use previous MCU's DC as input to generate the next x_0 and mu
-        x_n = scaleToRange(0, min_dct, max_dct, min_x, max_x);
-        mu_n = scaleToRange(0, min_dct, max_dct, min_mu, max_mu);
+        x_n = scaleToRange(prev_dct_avg, min_dct, max_dct, min_x, max_x);
+        mu_n = scaleToRange(prev_dct_avg, min_dct, max_dct, min_mu, max_mu);
       }
 
       chaotic_dim_array[y] = (struct chaos_dc *) malloc(chaos_len * sizeof(struct chaos_dc));
@@ -597,7 +597,6 @@ static void encryptAlternatingMCUs(
         if (sorted_blocks[k]) {
           k += 1;
           curr_block = k;
-          prev_dct_avg += mcu_buff[0][0][k];
           continue;
         }
 
@@ -622,7 +621,12 @@ static void encryptAlternatingMCUs(
         }
       }
 
-      LOGD("encryptAlternatingMCUs finished swapping row, used values: prev_dct_avg=%f, x_n=%f, mu_n=%f", prev_dct_avg, x_n, mu_n);
+      for (int i = 0; i < comp_info->width_in_blocks; i++) {
+        JCOEFPTR mcu_ptr = mcu_buff[0][i];
+        prev_dct_avg += mcu_ptr[0];
+      }
+
+      LOGD("encryptAlternatingMCUs finished swap, values: prev_dct_avg=%f, x_n=%f, mu_n=%f", prev_dct_avg, x_n, mu_n);
       free(chaotic_dim_array[y]);
       prev_dct_avg /= comp_info->width_in_blocks;
     }
@@ -706,7 +710,7 @@ static void decryptAlternatingMCUs(
   float mu = 3.57; // Should choose from [3.57, 4.0]
   float x_n = x_0;
   float mu_n = mu;
-  float prev_dct_avg = 0;
+  double prev_dct_avg = 0;
 
   // Iterate over every DCT coefficient in the image, for every color component
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
@@ -727,8 +731,8 @@ static void decryptAlternatingMCUs(
         float min_mu = 3.57;
         float max_mu = 4.0;
         // Use previous MCU's DC as input to generate the next x_0 and mu
-        x_n = scaleToRange(0, min_dct, max_dct, min_x, max_x);
-        mu_n = scaleToRange(0, min_dct, max_dct, min_mu, max_mu);
+        x_n = scaleToRange(prev_dct_avg, min_dct, max_dct, min_x, max_x);
+        mu_n = scaleToRange(prev_dct_avg, min_dct, max_dct, min_mu, max_mu);
       }
 
       chaotic_dim_array[y] = (struct chaos_dc *) malloc(comp_info->width_in_blocks * sizeof(struct chaos_dc));
@@ -776,15 +780,15 @@ static void decryptAlternatingMCUs(
         JCOEFPTR dct_block = mcu_buff[0][i];
 
         std::copy(chaos_op[dest_pos].dcts, chaos_op[dest_pos].dcts + DCTSIZE2, dct_block);
-
-        prev_dct_avg += chaos_op[dest_pos].dcts[0];
       }
 
       for (int i = 0; i < comp_info->width_in_blocks; i++) {
+        JCOEFPTR mcu_ptr = mcu_buff[0][i];
+        prev_dct_avg += mcu_ptr[0];
         free(chaos_op[i].dcts);
       }
 
-      LOGD("decryptAlternatingMCUs finished swapping row, used values: prev_dct_avg=%f, x_n=%f, mu_n=%f", prev_dct_avg, x_n, mu_n);
+      LOGD("decryptAlternatingMCUs finished swap, values: prev_dct_avg=%f, x_n=%f, mu_n=%f", prev_dct_avg, x_n, mu_n);
 end_loop:
       free(chaotic_dim_array[y]);
       free(chaos_op);
