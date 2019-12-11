@@ -9,12 +9,10 @@ import android.view.ViewGroup;
 
 import androidx.annotation.Nullable;
 
-import com.facebook.common.internal.ByteStreams;
 import com.facebook.common.internal.Closeables;
 import com.facebook.common.internal.Preconditions;
 import com.facebook.common.logging.FLog;
 import com.facebook.common.memory.PooledByteBuffer;
-import com.facebook.common.memory.PooledByteBufferInputStream;
 import com.facebook.common.references.CloseableReference;
 import com.facebook.datasource.BaseDataSubscriber;
 import com.facebook.datasource.DataSource;
@@ -27,9 +25,12 @@ import com.facebook.fresco.samples.showcase.misc.ImageUriProvider;
 import com.facebook.imagepipeline.common.ImageDecodeOptionsBuilder;
 import com.facebook.imagepipeline.core.DefaultExecutorSupplier;
 import com.facebook.imagepipeline.core.ImagePipeline;
+import com.facebook.imagepipeline.decryptor.ImageDecryptor;
+import com.facebook.imagepipeline.decryptor.ImageDecryptorFactory;
 import com.facebook.imagepipeline.encryptor.ImageEncryptor;
 import com.facebook.imagepipeline.encryptor.ImageEncryptorFactory;
 import com.facebook.imagepipeline.image.EncodedImage;
+import com.facebook.imagepipeline.nativecode.NativeImageDecryptorFactory;
 import com.facebook.imagepipeline.nativecode.NativeImageEncryptorFactory;
 import com.facebook.imagepipeline.request.ImageRequest;
 import com.facebook.imagepipeline.request.ImageRequestBuilder;
@@ -48,7 +49,7 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
   private SimpleDraweeView mDraweeDecryptView;
   private Uri mUri;
 
-  private Uri lastEncryptedImage = null;
+  private Uri lastSavedImage = null;
 
   private ImagePipeline pipeline;
 
@@ -112,6 +113,36 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
     DataSource<CloseableReference<PooledByteBuffer>> dataSource = pipeline
             .fetchEncodedImage(imageRequest, this);
 
+    final ImageEncryptorFactory factory = NativeImageEncryptorFactory
+            .getNativeImageEncryptorFactory(pipeline.getConfig().getExperiments().getMaxBitmapSize());
+
+    dataSourceToDisk(dataSource, mDraweeEncryptView, factory, null);
+  }
+
+  private void setDecryptOptions() {
+    if (lastSavedImage != null) {
+      pipeline.clearCaches();
+      ImageRequest imageRequest =
+              ImageRequestBuilder.newBuilderWithSource(lastSavedImage)
+                      .setDecrypt(true)
+                      .setImageDecodeOptions(new ImageDecodeOptionsBuilder().build())
+                      .build();
+      //mDraweeDecryptView.setImageRequest(imageRequest);
+
+      DataSource<CloseableReference<PooledByteBuffer>> dataSource = pipeline
+              .fetchEncodedImage(imageRequest, this);
+
+      final ImageDecryptorFactory factory = NativeImageDecryptorFactory
+              .getNativeImageDecryptorFactory(pipeline.getConfig().getExperiments().getMaxBitmapSize());
+
+      dataSourceToDisk(dataSource, mDraweeDecryptView, null, factory);
+    }
+  }
+
+  private void dataSourceToDisk(final DataSource<CloseableReference<PooledByteBuffer>> dataSource,
+                                @Nullable final SimpleDraweeView viewToDisplayWith,
+                                @Nullable final ImageEncryptorFactory encryptorFactory,
+                                @Nullable final ImageDecryptorFactory decryptorFactory) {
     final Executor executor = new DefaultExecutorSupplier(1).forBackgroundTasks();
 
     final File encryptedImageDir = Preconditions.checkNotNull(this.getContext()).getExternalFilesDir(null);
@@ -132,23 +163,26 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
                   File tempFile = null;
                   try {
                     final EncodedImage encodedImage = new EncodedImage(ref);
-
-                    final ImageEncryptorFactory factory = NativeImageEncryptorFactory.getNativeImageEncryptorFactory(pipeline.getConfig().getExperiments().getMaxBitmapSize());
-                    final ImageEncryptor encryptor = factory.createImageEncryptor(encodedImage.getImageFormat());
                     final InputStream is = encodedImage.getInputStream();
 
                     try {
                       tempFile = File.createTempFile(mUri.getLastPathSegment(), ".jpg", encryptedImageDir);
                       FileOutputStream fileOutputStream = new FileOutputStream(tempFile);
 
-                      encryptor.encrypt(encodedImage, fileOutputStream, null, null);
+                      if (encryptorFactory != null) {
+                        final ImageEncryptor encryptor = encryptorFactory.createImageEncryptor(encodedImage.getImageFormat());
+                        encryptor.encrypt(encodedImage, fileOutputStream, null, null);
+                        FLog.d(TAG, "Wrote %s encrypted to %s (size: %s bytes)", mUri, tempFile.getAbsolutePath(), tempFile.length() / 8);
+                      } else if (decryptorFactory != null) {
+                        final ImageDecryptor decryptor = decryptorFactory.createImageDecryptor(encodedImage.getImageFormat());
+                        decryptor.decrypt(encodedImage, fileOutputStream, null, null);
+                        FLog.d(TAG, "Wrote %s decrypted to %s (size: %s bytes)", mUri, tempFile.getAbsolutePath(), tempFile.length() / 8);
+                      }
 
                       MediaScannerConnection.scanFile(getContext(),
                               new String[]{tempFile.getAbsolutePath()},
                               null,
                               msClient);
-
-                      FLog.d(TAG, "Wrote %s as encrypted JPEG to location %s (size: %s bytes)", mUri, tempFile.getAbsolutePath(), tempFile.length() / 8);
 
                       Closeables.close(fileOutputStream, true);
                     } catch (IOException e) {
@@ -161,12 +195,14 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
                   }
 
                   if (tempFile != null) {
-                    lastEncryptedImage = Uri.parse(tempFile.toURI().toString());
+                    lastSavedImage = Uri.parse(tempFile.toURI().toString());
                     ImageRequest encryptedImageRequest =
-                            ImageRequestBuilder.newBuilderWithSource(lastEncryptedImage)
+                            ImageRequestBuilder.newBuilderWithSource(lastSavedImage)
                                     .setImageDecodeOptions(new ImageDecodeOptionsBuilder().build())
                                     .build();
-                    mDraweeEncryptView.setImageRequest(encryptedImageRequest);
+                    if (viewToDisplayWith != null) {
+                      viewToDisplayWith.setImageRequest(encryptedImageRequest);
+                    }
                   }
                 }
               }
@@ -174,23 +210,11 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
               @Override
               protected void onFailureImpl(DataSource<CloseableReference<PooledByteBuffer>> dataSource) {
                 Throwable t = dataSource.getFailureCause();
-                FLog.e(TAG, "Failed to load and encrypt JPEG", t);
+                FLog.e(TAG, "Failed to load and encrypt/decrypt JPEG", t);
               }
             };
 
     dataSource.subscribe(dataSubscriber, executor);
-  }
-
-  private void setDecryptOptions() {
-    if (lastEncryptedImage != null) {
-      pipeline.clearCaches();
-      ImageRequest imageRequest =
-              ImageRequestBuilder.newBuilderWithSource(lastEncryptedImage)
-                      .setDecrypt(true)
-                      .setImageDecodeOptions(new ImageDecodeOptionsBuilder().build())
-                      .build();
-      mDraweeDecryptView.setImageRequest(imageRequest);
-    }
   }
 
   @Override
