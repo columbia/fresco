@@ -47,8 +47,10 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
 
   private SimpleDraweeView mDraweeEncryptView;
   private SimpleDraweeView mDraweeDecryptView;
+  private SimpleDraweeView mDraweeDecryptDiskView;
   private Uri mUri;
 
+  private File encryptedImageDir;
   private Uri lastSavedImage = null;
 
   private ImagePipeline pipeline;
@@ -76,9 +78,12 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
   public void onViewCreated(View view, @Nullable Bundle savedInstanceState) {
     pipeline = Fresco.getImagePipeline();
 
+    encryptedImageDir = Preconditions.checkNotNull(this.getContext()).getExternalFilesDir(null);
+
     mUri = sampleUris().createSampleUri(ImageUriProvider.ImageSize.XL);
     mDraweeEncryptView = view.findViewById(R.id.drawee_view);
     mDraweeDecryptView = view.findViewById(R.id.drawee_decrypt);
+    mDraweeDecryptDiskView = view.findViewById(R.id.drawee_decrypt_disk);
 
     setEncryptOptions();
 
@@ -98,6 +103,15 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
                       @Override
                       public void onClick(View v) {
                         setDecryptOptions();
+                      }
+                    });
+
+    view.findViewById(R.id.btn_decrypt_image_disk)
+            .setOnClickListener(
+                    new View.OnClickListener() {
+                      @Override
+                      public void onClick(View v) {
+                        setDecryptDiskOptions();
                       }
                     });
   }
@@ -127,8 +141,6 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
                       .setDecrypt(true)
                       .setImageDecodeOptions(new ImageDecodeOptionsBuilder().build())
                       .build();
-      //mDraweeDecryptView.setImageRequest(imageRequest);
-
       DataSource<CloseableReference<PooledByteBuffer>> dataSource = pipeline
               .fetchEncodedImage(imageRequest, this);
 
@@ -139,13 +151,27 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
     }
   }
 
+  private void setDecryptDiskOptions() {
+    final String filePath = "animal_c_xl.jpggoogle.jpg";
+    final File imageFile = new File(encryptedImageDir, filePath);
+    if (imageFile.exists()) {
+      pipeline.clearCaches();
+      Uri testImage = Uri.parse(imageFile.toURI().toString());
+      ImageRequest imageRequest =
+              ImageRequestBuilder.newBuilderWithSource(testImage)
+                      .setDecrypt(true)
+                      .setImageDecodeOptions(new ImageDecodeOptionsBuilder().build())
+                      .build();
+      FLog.d(TAG, "Decrypting %s from disk", imageFile.getAbsolutePath());
+      mDraweeDecryptDiskView.setImageRequest(imageRequest);
+    }
+  }
+
   private void dataSourceToDisk(final DataSource<CloseableReference<PooledByteBuffer>> dataSource,
                                 @Nullable final SimpleDraweeView viewToDisplayWith,
                                 @Nullable final ImageEncryptorFactory encryptorFactory,
                                 @Nullable final ImageDecryptorFactory decryptorFactory) {
     final Executor executor = new DefaultExecutorSupplier(1).forBackgroundTasks();
-
-    final File encryptedImageDir = Preconditions.checkNotNull(this.getContext()).getExternalFilesDir(null);
 
     DataSubscriber<CloseableReference<PooledByteBuffer>> dataSubscriber =
             new BaseDataSubscriber<CloseableReference<PooledByteBuffer>>() {
