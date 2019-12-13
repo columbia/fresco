@@ -5,10 +5,10 @@
 #include <jni.h>
 
 #include "exceptions_handler.h"
-#include "jpeg/jpeg_codec.h"
+#include "jpeg/crypto/jpeg_encrypt.h"
 #include "logging.h"
 
-using facebook::imagepipeline::jpeg::encryptJpeg;
+using facebook::imagepipeline::jpeg::crypto::encryptJpeg;
 
 static void JpegEncryptor_encryptJpeg(
     JNIEnv* env,

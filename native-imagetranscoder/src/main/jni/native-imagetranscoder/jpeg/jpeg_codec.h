@@ -12,6 +12,7 @@
 
 #include <string.h>
 
+#include "jpeg_error_handler.h"
 #include "decoded_image.h"
 #include "transformations.h"
 
@@ -34,16 +35,6 @@ void encodeJpegIntoOutputStream(
     jobject os,
     int quality);
 
-void encryptJpeg(
-    JNIEnv* env,
-    jobject is,
-    jobject os);
-
-void decryptJpeg(
-    JNIEnv* env,
-    jobject is,
-    jobject os);
-
 /**
  * Downscales and rotates jpeg image
  *
@@ -62,6 +53,31 @@ void transformJpeg(
     RotationType rotation_type,
     const ScaleFactor& scale_factor,
     int quality);
+
+/**
+ * Initializes decompress struct.
+ *
+ * <p> Sets source and error handling.
+ *
+ * <p> Sets decompress parameters to optimize decode time.
+ */
+void initDecompressStruct(
+    struct jpeg_decompress_struct& dinfo,
+    JpegErrorHandler& error_handler,
+    struct jpeg_source_mgr& source);
+
+/**
+ * Initializes compress struct.
+ *
+ * <p> Sets destination and error handler.
+ *
+ * <p> Sets copies params from given decompress struct
+ */
+void initCompressStruct(
+    struct jpeg_compress_struct& cinfo,
+    struct jpeg_decompress_struct& dinfo,
+    JpegErrorHandler& error_handler,
+    struct jpeg_destination_mgr& destination);
 
 } } }
 
