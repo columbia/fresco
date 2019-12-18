@@ -72,7 +72,7 @@ static void decryptAlternatingMCUs(
         return;
       }
 
-      generateChaoticSequence_WithInputs(chaotic_dim_array[y], comp_info->width_in_blocks, x_n, mu_n);
+      generateChaoticSequence(chaotic_dim_array[y], comp_info->width_in_blocks, x_n, mu_n);
 
       // Alternating DCT modification for reduced security but increased usability
       // Shuffle pointers to MCUs based on chaotic sequence

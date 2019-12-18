@@ -1,0 +1,4 @@
+#ifndef FRESCO_JPEG_KEY_H
+#define FRESCO_JPEG_KEY_H
+
+#endif //FRESCO_JPEG_KEY_H

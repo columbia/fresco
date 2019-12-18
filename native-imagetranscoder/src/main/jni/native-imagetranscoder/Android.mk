@@ -18,6 +18,7 @@ LOCAL_SRC_FILES := \
 	jpeg/crypto/jpeg_crypto.cpp \
 	jpeg/crypto/jpeg_encrypt.cpp \
 	jpeg/crypto/jpeg_decrypt.cpp \
+	jpeg/crypto/jpeg_key.cpp \
 	transformations.cpp \
 	JpegTranscoder.cpp \
 	JpegEncryptor.cpp \

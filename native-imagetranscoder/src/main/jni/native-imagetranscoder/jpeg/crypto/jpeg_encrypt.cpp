@@ -154,7 +154,7 @@ static void encryptJpegHe2018(
     LOGE("encryptJpegHe2018 failed to alloc memory for chaotic_seq");
     goto teardown;
   }
-  generateChaoticSequence(chaotic_seq, n_blocks);
+  generateChaoticSequence(chaotic_seq, n_blocks, 0.5, 3.57);
   iterateDCs(&dinfo, src_coefs, chaotic_seq, n_blocks);
 
   jpeg_write_coefficients(&cinfo, src_coefs);
@@ -254,7 +254,7 @@ static void encryptAlternatingMCUs(
         return;
       }
 
-      generateChaoticSequence_WithInputs(chaotic_dim_array[y], chaos_len, x_n, mu_n);
+      generateChaoticSequence(chaotic_dim_array[y], chaos_len, x_n, mu_n);
 
       // Alternating DCT modification for reduced security but increased usability
       // Shuffle pointers to MCUs based on chaotic sequence

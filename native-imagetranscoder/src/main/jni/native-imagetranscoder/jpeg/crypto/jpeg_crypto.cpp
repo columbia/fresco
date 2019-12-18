@@ -35,43 +35,20 @@ bool chaos_pos_sorter(struct chaos_dc left, struct chaos_dc right) {
   return left.chaos_pos < right.chaos_pos;
 }
 
+/*
+ * x_0 and mu are the secret values.
+ * n is the length of chaotic_seq.
+ */
 void generateChaoticSequence(
     struct chaos_dc *chaotic_seq,
-    int n // The number of DC coefficients and also the length of chaotic_seq
-    /*
-    float x_0, // Secret value
-    float m_u // Secret value
-    */) {
-  float x_0 = 0.5; // Should choose randomly from [0, 1.0]
-  float mu = 3.57; // Should choose randomly from [3.57, 4.0]
+    int n,
+    float x_0,
+    float mu) {
 
   chaotic_seq[0].chaos = mu * x_0 * (1 - x_0);
   chaotic_seq[0].chaos_pos = 0;
 
   LOGD("generateChaoticSequence chaotic_seq[0].chaos: %f", chaotic_seq[0].chaos);
-
-  for (int i = 1; i < n; i++) {
-    float x_n = chaotic_seq[i - 1].chaos;
-    chaotic_seq[i].chaos = mu * x_n * (1 - x_n);
-    chaotic_seq[i].chaos_pos = i;
-    //LOGD("Generated chaotic_seq value: %f", chaotic_seq[i]);
-  }
-
-  // Order the sequence in ascending order based on the chaotic value
-  // Each value's original position is maintained via the chaotic_pos member
-  std::sort(chaotic_seq, chaotic_seq + n, &chaos_sorter);
-}
-
-void generateChaoticSequence_WithInputs(
-    struct chaos_dc *chaotic_seq,
-    int n, // The number of DC coefficients and also the length of chaotic_seq
-    float x_0,
-    float mu
-    ) {
-  chaotic_seq[0].chaos = mu * x_0 * (1 - x_0);
-  chaotic_seq[0].chaos_pos = 0;
-
-  //LOGD("generateChaoticSequence chaotic_seq[0].chaos: %f", chaotic_seq[0].chaos);
 
   for (int i = 1; i < n; i++) {
     float x_n = chaotic_seq[i - 1].chaos;
