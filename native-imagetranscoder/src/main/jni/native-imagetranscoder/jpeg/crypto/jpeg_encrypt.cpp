@@ -210,15 +210,16 @@ static void encryptByRow(
     bool *sorted_blocks;
     unsigned int chaos_len = comp_info->width_in_blocks;
 
+    // Note: comp_info->width_in_blocks (chaos_len) is not the same for every component
     sorted_blocks = (bool *) malloc(comp_info->width_in_blocks * sizeof(bool));
     if (sorted_blocks == NULL) {
-      LOGE("encryptAlternatingMCUs failed to alloc memory for sorted_blocks");
+      LOGE("encryptByRow failed to alloc memory for sorted_blocks");
       return;
     }
 
     std::fill(sorted_blocks, sorted_blocks + comp_info->width_in_blocks, false);
 
-    LOGD("encryptAlternatingMCUs iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
+    LOGD("encryptByRow iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
 
     for (int y = 0; y < comp_info->height_in_blocks; y++) {
       JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
@@ -235,7 +236,7 @@ static void encryptByRow(
 
       chaotic_dim_array_y = (struct chaos_dc *) malloc(chaos_len * sizeof(struct chaos_dc));
       if (chaotic_dim_array_y == NULL) {
-        LOGE("encryptAlternatingMCUs failed to alloc memory for chaotic_dim_array_y (%d)", y);
+        LOGE("encryptByRow failed to alloc memory for chaotic_dim_array_y (%d)", y);
         continue;
       }
 
@@ -253,7 +254,6 @@ static void encryptByRow(
       curr_block = k;
       std::fill(sorted_blocks, sorted_blocks + comp_info->width_in_blocks, false);
       while (k < comp_info->width_in_blocks) {
-        JCOEFPTR mcu_ptr;
         unsigned int mcu_ptr_new_pos;
 
         if (sorted_blocks[k]) {
@@ -263,9 +263,7 @@ static void encryptByRow(
         }
 
         // curr_block is in the wrong spot, look up where it should go
-        mcu_ptr = mcu_buff[0][k];
         mcu_ptr_new_pos = chaotic_dim_array_y[curr_block].chaos_pos;
-        //LOGD("iterateAlternatingMCUs curr_block=%d, mcu_ptr_new_pos=%d", curr_block, mcu_ptr_new_pos);
 
         if (mcu_ptr_new_pos != k) {
           // Swap curr_block with its correct new position, then mark the new position as sorted
@@ -283,7 +281,7 @@ static void encryptByRow(
         }
       }
 
-      LOGD("encryptAlternatingMCUs finished swap, values: x_n=%f, mu_n=%f", x_n, mu_n);
+      LOGD("encryptByRow finished swap, values: x_n=%f, mu_n=%f", x_n, mu_n);
       free(chaotic_dim_array_y);
     }
 
@@ -296,92 +294,71 @@ static void encryptByColumn(
     jvirt_barray_ptr* src_coefs,
     float x_n,
     float mu_n) {
-  struct chaos_dc *chaotic_dim_array_y;
 
-  // Iterate over every DCT coefficient in the image, for every color component
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
     jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
-    bool *sorted_blocks;
-    unsigned int chaos_len = comp_info->width_in_blocks;
+    int k = 0;
+    int curr_row = k;
+    unsigned int chaos_len = comp_info->height_in_blocks;
+    struct chaos_dc *chaotic_seq;
+    bool *sorted_rows;
 
-    sorted_blocks = (bool *) malloc(comp_info->width_in_blocks * sizeof(bool));
-    if (sorted_blocks == NULL) {
-      LOGE("encryptAlternatingMCUs failed to alloc memory for sorted_blocks");
+    LOGD("encryptByColumn iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
+
+    // Note: comp_info->height_in_blocks (chaos_len) is not the same for every component
+    chaotic_seq = (struct chaos_dc *) malloc(chaos_len * sizeof(struct chaos_dc));
+    if (chaotic_seq == NULL) {
+      LOGE("encryptByColumn failed to alloc memory for chaotic_seq");
       return;
     }
 
-    std::fill(sorted_blocks, sorted_blocks + comp_info->width_in_blocks, false);
+    sorted_rows = (bool *) malloc(chaos_len * sizeof(bool));
+    if (sorted_rows == NULL) {
+      LOGE("encryptByColumn failed to alloc memory for sorted_rows");
+      free(chaotic_seq);
+      return;
+    }
 
-    LOGD("encryptAlternatingMCUs iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
+    generateChaoticSequence(chaotic_seq, chaos_len, x_n, mu_n);
 
-    for (int y = 0; y < comp_info->height_in_blocks; y++) {
-      JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
-      int k, curr_block;
+    std::fill(sorted_rows, sorted_rows + chaos_len, false);
 
-      mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
+    while (k < comp_info->height_in_blocks) {
+      unsigned int row_new_pos;
 
-      if (y > 0) {
-        float min_input = 0;
-        float max_input = comp_info->height_in_blocks;
-        x_n = scaleToRange(y, min_input, max_input, SCALE_MIN_X, SCALE_MAX_X);
-        mu_n = scaleToRange(y, min_input, max_input, SCALE_MIN_MU, SCALE_MAX_MU);
-      }
-
-      chaotic_dim_array_y = (struct chaos_dc *) malloc(chaos_len * sizeof(struct chaos_dc));
-      if (chaotic_dim_array_y == NULL) {
-        LOGE("encryptAlternatingMCUs failed to alloc memory for chaotic_dim_array_y (%d)", y);
+      if (sorted_rows[k]) {
+        k += 1;
+        curr_row = k;
         continue;
       }
 
-      generateChaoticSequence(chaotic_dim_array_y, chaos_len, x_n, mu_n);
+      // curr_row is in the wrong spot, look up where it should go
+      row_new_pos = chaotic_seq[curr_row].chaos_pos;
 
-      // Alternating DCT modification for reduced security but increased usability
-      // Shuffle pointers to MCUs based on chaotic sequence
-      // ex) Chaotic sequence:
-      //  chaos  1.29   2.96   3.10   3.29   5.22
-      //  pos    3      5      2      1      4
-      //         A      B      C      D      E
-      //  pos    1      2      3      4      5
-      //         D      C      A      E      B
-      k = 0;
-      curr_block = k;
-      std::fill(sorted_blocks, sorted_blocks + comp_info->width_in_blocks, false);
-      while (k < comp_info->width_in_blocks) {
-        JCOEFPTR mcu_ptr;
-        unsigned int mcu_ptr_new_pos;
+      if (row_new_pos != k) {
+        JBLOCKARRAY row_a; // JBLOCKROW *
+        JBLOCKARRAY row_b; // JBLOCKROW *
+        // Swap curr_block with its correct new position, then mark the new position as sorted
+        row_a = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], k, (JDIMENSION) 1, TRUE);
+        row_b = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], row_new_pos, (JDIMENSION) 1, TRUE);
 
-        if (sorted_blocks[k]) {
-          k += 1;
-          curr_block = k;
-          continue;
-        }
+        std::swap(row_a[0], row_b[0]);
 
-        // curr_block is in the wrong spot, look up where it should go
-        mcu_ptr = mcu_buff[0][k];
-        mcu_ptr_new_pos = chaotic_dim_array_y[curr_block].chaos_pos;
-        //LOGD("iterateAlternatingMCUs curr_block=%d, mcu_ptr_new_pos=%d", curr_block, mcu_ptr_new_pos);
+        sorted_rows[row_new_pos] = true;
 
-        if (mcu_ptr_new_pos != k) {
-          // Swap curr_block with its correct new position, then mark the new position as sorted
-          std::swap(mcu_buff[0][k], mcu_buff[0][mcu_ptr_new_pos]);
-          sorted_blocks[mcu_ptr_new_pos] = true;
-
-          // The block that we swapped with might be in the wrong spot now,
-          // so keep k the same but update curr_block so it can do the look up
-          // on the original position of the block now in position k
-          curr_block = mcu_ptr_new_pos;
-        } else {
-          sorted_blocks[k] = true;
-          k += 1;
-          curr_block = k;
-        }
+        // The row that we swapped with might be in the wrong spot now,
+        // so keep k the same but update curr_row so it can do the look up
+        // on the original position of the row now in position k
+        curr_row = row_new_pos;
+      } else {
+        sorted_rows[k] = true;
+        k += 1;
+        curr_row = k;
       }
-
-      LOGD("encryptAlternatingMCUs finished swap, values: x_n=%f, mu_n=%f", x_n, mu_n);
-      free(chaotic_dim_array_y);
     }
 
-    free(sorted_blocks);
+    free(sorted_rows);
+    free(chaotic_seq);
   }
 }
 
@@ -415,11 +392,11 @@ void encryptJpegByRowAndColumn(
   jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
 
   encryptByRow(&dinfo, src_coefs, 0.5, 3.57);
-  //encryptByColumn(&dinfo, src_coefs, 0.5, 3.57);
+  encryptByColumn(&dinfo, src_coefs, 0.5, 3.57);
 
   jpeg_write_coefficients(&cinfo, src_coefs);
 
-  LOGD("encryptJpegAlternatingMCUs finished");
+  LOGD("encryptJpegByRowAndColumn finished");
 
 teardown:
   jpeg_finish_compress(&cinfo);
