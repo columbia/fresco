@@ -207,7 +207,6 @@ static void encryptAlternatingMCUs(
   float mu = 3.57; // Should choose from [3.57, 4.0]
   float x_n = x_0;
   float mu_n = mu;
-  double prev_dct_avg = 0;
 
   // Iterate over every DCT coefficient in the image, for every color component
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
@@ -227,14 +226,9 @@ static void encryptAlternatingMCUs(
 
     for (int y = 0; y < comp_info->height_in_blocks; y++) {
       JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
-      int alternate_x = 0;
       int k, curr_block;
 
       mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
-
-      if (y % 2) {
-        alternate_x = 1;
-      }
 
       if (y > 0) {
         float min_dct = -128;
@@ -298,17 +292,10 @@ static void encryptAlternatingMCUs(
         }
       }
 
-      for (int i = 0; i < comp_info->width_in_blocks; i++) {
-        JCOEFPTR mcu_ptr = mcu_buff[0][i];
-        prev_dct_avg += mcu_ptr[0];
-      }
-
-      LOGD("encryptAlternatingMCUs finished swap, values: prev_dct_avg=%f, x_n=%f, mu_n=%f", prev_dct_avg, x_n, mu_n);
+      LOGD("encryptAlternatingMCUs finished swap, values: x_n=%f, mu_n=%f", x_n, mu_n);
       free(chaotic_dim_array[y]);
-      prev_dct_avg /= comp_info->width_in_blocks;
     }
 
-    prev_dct_avg = 0;
     free(sorted_blocks);
   }
 }

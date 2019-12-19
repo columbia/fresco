@@ -41,7 +41,6 @@ static void decryptAlternatingMCUs(
   float mu = 3.57; // Should choose from [3.57, 4.0]
   float x_n = x_0;
   float mu_n = mu;
-  double prev_dct_avg = 0;
 
   // Iterate over every DCT coefficient in the image, for every color component
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
@@ -114,19 +113,14 @@ static void decryptAlternatingMCUs(
       }
 
       for (int i = 0; i < comp_info->width_in_blocks; i++) {
-        JCOEFPTR mcu_ptr = mcu_buff[0][i];
-        prev_dct_avg += mcu_ptr[0];
         free(chaos_op[i].dcts);
       }
 
-      LOGD("decryptAlternatingMCUs finished swap, values: prev_dct_avg=%f, x_n=%f, mu_n=%f", prev_dct_avg, x_n, mu_n);
+      LOGD("decryptAlternatingMCUs finished swap, values: x_n=%f, mu_n=%f", x_n, mu_n);
 end_loop:
       free(chaotic_dim_array[y]);
       free(chaos_op);
-      prev_dct_avg /= comp_info->width_in_blocks;
     }
-
-    prev_dct_avg = 0;
   }
 }
 
