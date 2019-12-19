@@ -31,14 +31,11 @@ struct chaos_pos_jcoefptr {
   JCOEFPTR dcts;
 };
 
-static void decryptAlternatingMCUs(
+static void decryptByRow(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr* src_coefs,
-    struct chaos_dc *chaotic_dim_array,
-    int chaotic_n,
     float x_n,
     float mu_n) {
-  int chaotic_i = 0;
   struct chaos_dc *chaotic_dim_array_y;
 
   // Iterate over every DCT coefficient in the image, for every color component
@@ -54,14 +51,9 @@ static void decryptAlternatingMCUs(
 
       if (y > 0) {
         float min_input = 0;
-        float max_input = (int) chaotic_n;
-        float min_x = 0.0;
-        float max_x = 1.0;
-        float min_mu = 3.57;
-        float max_mu = 4.0;
-        int new_chaotic_input = chaotic_dim_array[chaotic_i++].chaos_pos;
-        x_n = scaleToRange(y, min_input, max_input, min_x, max_x);
-        mu_n = scaleToRange(y, min_input, max_input, min_mu, max_mu);
+        float max_input = comp_info->height_in_blocks;
+        x_n = scaleToRange(y, min_input, max_input, SCALE_MIN_X, SCALE_MAX_X);
+        mu_n = scaleToRange(y, min_input, max_input, SCALE_MIN_MU, SCALE_MAX_MU);
       }
 
       chaotic_dim_array_y = (struct chaos_dc *) malloc(comp_info->width_in_blocks * sizeof(struct chaos_dc));
@@ -132,7 +124,6 @@ void decryptJpeg(
   JpegErrorHandler error_handler{env};
   struct jpeg_source_mgr& source = is_wrapper.public_fields;
   struct jpeg_destination_mgr& destination = os_wrapper.public_fields;
-  struct chaos_dc *chaotic_dim_array;
 
   if (setjmp(error_handler.setjmpBuffer)) {
     return;
@@ -153,22 +144,13 @@ void decryptJpeg(
   jpeg_copy_critical_parameters(&dinfo, &cinfo);
   jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
 
-  chaotic_dim_array = (struct chaos_dc *) malloc(dinfo.comp_info->height_in_blocks * sizeof(struct chaos_dc));
-  if (chaotic_dim_array == NULL) {
-    LOGE("decryptJpeg failed to alloc memory for chaotic_dim_array");
-    goto teardown;
-  }
-
-  generateChaoticSequence(chaotic_dim_array, dinfo.comp_info->height_in_blocks, 0.5, 3.57);
-
-  decryptAlternatingMCUs(&dinfo, src_coefs, chaotic_dim_array, dinfo.comp_info->height_in_blocks, 0.5, 3.57);
+  decryptByRow(&dinfo, src_coefs, 0.5, 3.57);
 
   jpeg_write_coefficients(&cinfo, src_coefs);
 
   LOGD("decryptJpeg finished");
 
 teardown:
-  free(chaotic_dim_array);
   jpeg_finish_compress(&cinfo);
   jpeg_destroy_compress(&cinfo);
   jpeg_destroy_decompress(&dinfo);

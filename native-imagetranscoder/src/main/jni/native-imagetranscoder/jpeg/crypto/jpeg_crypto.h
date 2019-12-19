@@ -6,6 +6,11 @@ namespace imagepipeline {
 namespace jpeg {
 namespace crypto {
 
+const float SCALE_MIN_X = 0.0;
+const float SCALE_MAX_X = 1.0;
+const float SCALE_MIN_MU = 3.57;
+const float SCALE_MAX_MU = 4.0;
+
 struct chaos_dc {
   float chaos;
   unsigned int chaos_pos;
