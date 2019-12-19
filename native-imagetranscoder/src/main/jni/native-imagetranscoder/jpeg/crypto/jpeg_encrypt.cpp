@@ -201,12 +201,10 @@ static void encryptAlternatingMCUs(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr* src_coefs,
     struct chaos_dc *chaotic_dim_array,
-    int chaotic_n) {
+    int chaotic_n,
+    float x_n,
+    float mu_n) {
   int chaotic_i = 0;
-  float x_0 = 0.5; // Should choose from [0, 1.0] - use (He 2018)'s approach for creating a key as inputs
-  float mu = 3.57; // Should choose from [3.57, 4.0]
-  float x_n = x_0;
-  float mu_n = mu;
   struct chaos_dc *chaotic_dim_array_y;
 
   // Iterate over every DCT coefficient in the image, for every color component
@@ -232,15 +230,15 @@ static void encryptAlternatingMCUs(
       mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
 
       if (y > 0) {
-        float min_dct = -128;
-        float max_dct = 128;
+        float min_dct = -1.0;
+        float max_dct = 1.0;
         float min_x = 0.0;
         float max_x = 1.0;
         float min_mu = 3.57;
         float max_mu = 4.0;
-
-        x_n = scaleToRange(55, min_dct, max_dct, min_x, max_x);
-        mu_n = scaleToRange(55, min_dct, max_dct, min_mu, max_mu);
+        float new_chaotic_input = chaotic_dim_array[chaotic_i++].chaos;
+        x_n = scaleToRange(new_chaotic_input, min_dct, max_dct, min_x, max_x);
+        mu_n = scaleToRange(new_chaotic_input, min_dct, max_dct, min_mu, max_mu);
       }
 
       chaotic_dim_array_y = (struct chaos_dc *) malloc(chaos_len * sizeof(struct chaos_dc));
@@ -341,7 +339,7 @@ void encryptJpegAlternatingMCUs(
 
   LOGD("encryptJpegAlternatingMCUs dinfo.comp_info->height_in_blocks=%d", dinfo.comp_info->height_in_blocks);
 
-  encryptAlternatingMCUs(&dinfo, src_coefs, chaotic_dim_array, dinfo.comp_info->height_in_blocks);
+  encryptAlternatingMCUs(&dinfo, src_coefs, chaotic_dim_array, dinfo.comp_info->height_in_blocks, 0.5, 3.57);
 
   jpeg_write_coefficients(&cinfo, src_coefs);
 
