@@ -197,14 +197,11 @@ static void iterateDCTs(j_decompress_ptr dinfo, jvirt_barray_ptr* src_coefs) {
   }
 }
 
-static void encryptAlternatingMCUs(
+static void encryptByRow(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr* src_coefs,
-    struct chaos_dc *chaotic_dim_array,
-    int chaotic_n,
     float x_n,
     float mu_n) {
-  int chaotic_i = 0;
   struct chaos_dc *chaotic_dim_array_y;
 
   // Iterate over every DCT coefficient in the image, for every color component
@@ -231,12 +228,11 @@ static void encryptAlternatingMCUs(
 
       if (y > 0) {
         float min_input = 0;
-        float max_input = (int) chaotic_n;
+        float max_input = comp_info->height_in_blocks;
         float min_x = 0.0;
         float max_x = 1.0;
         float min_mu = 3.57;
         float max_mu = 4.0;
-        int new_chaotic_input = chaotic_dim_array[chaotic_i++].chaos_pos;
         x_n = scaleToRange(y, min_input, max_input, min_x, max_x);
         mu_n = scaleToRange(y, min_input, max_input, min_mu, max_mu);
       }
@@ -299,7 +295,7 @@ static void encryptAlternatingMCUs(
   }
 }
 
-void encryptJpegAlternatingMCUs(
+void encryptJpegByRowAndColumn(
     JNIEnv *env,
     jobject is,
     jobject os) {
@@ -339,7 +335,8 @@ void encryptJpegAlternatingMCUs(
 
   LOGD("encryptJpegAlternatingMCUs dinfo.comp_info->height_in_blocks=%d", dinfo.comp_info->height_in_blocks);
 
-  encryptAlternatingMCUs(&dinfo, src_coefs, chaotic_dim_array, dinfo.comp_info->height_in_blocks, 0.5, 3.57);
+  encryptByRow(&dinfo, src_coefs, 0.5, 3.57);
+  //encryptByColumn(&dinfo, src_coefs, 0.5, 3.57);
 
   jpeg_write_coefficients(&cinfo, src_coefs);
 
@@ -356,7 +353,7 @@ void encryptJpeg(
     JNIEnv *env,
     jobject is,
     jobject os) {
-  encryptJpegAlternatingMCUs(env, is, os);
+  encryptJpegByRowAndColumn(env, is, os);
 }
 
 } } } }
