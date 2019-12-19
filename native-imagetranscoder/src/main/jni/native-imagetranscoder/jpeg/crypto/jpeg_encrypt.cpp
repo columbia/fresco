@@ -230,15 +230,15 @@ static void encryptAlternatingMCUs(
       mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
 
       if (y > 0) {
-        float min_dct = -1.0;
-        float max_dct = 1.0;
+        float min_input = 0;
+        float max_input = (int) chaotic_n;
         float min_x = 0.0;
         float max_x = 1.0;
         float min_mu = 3.57;
         float max_mu = 4.0;
-        float new_chaotic_input = chaotic_dim_array[chaotic_i++].chaos;
-        x_n = scaleToRange(new_chaotic_input, min_dct, max_dct, min_x, max_x);
-        mu_n = scaleToRange(new_chaotic_input, min_dct, max_dct, min_mu, max_mu);
+        int new_chaotic_input = chaotic_dim_array[chaotic_i++].chaos_pos;
+        x_n = scaleToRange(y, min_input, max_input, min_x, max_x);
+        mu_n = scaleToRange(y, min_input, max_input, min_mu, max_mu);
       }
 
       chaotic_dim_array_y = (struct chaos_dc *) malloc(chaos_len * sizeof(struct chaos_dc));
