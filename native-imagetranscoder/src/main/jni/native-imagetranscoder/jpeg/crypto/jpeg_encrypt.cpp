@@ -200,13 +200,14 @@ static void iterateDCTs(j_decompress_ptr dinfo, jvirt_barray_ptr* src_coefs) {
 static void encryptAlternatingMCUs(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr* src_coefs,
-    struct chaos_dc **chaotic_dim_array,
+    struct chaos_dc *chaotic_dim_array,
     int chaotic_n) {
   int chaotic_i = 0;
   float x_0 = 0.5; // Should choose from [0, 1.0] - use (He 2018)'s approach for creating a key as inputs
   float mu = 3.57; // Should choose from [3.57, 4.0]
   float x_n = x_0;
   float mu_n = mu;
+  struct chaos_dc *chaotic_dim_array_y;
 
   // Iterate over every DCT coefficient in the image, for every color component
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
@@ -237,18 +238,18 @@ static void encryptAlternatingMCUs(
         float max_x = 1.0;
         float min_mu = 3.57;
         float max_mu = 4.0;
-        // Use previous MCU's DC as input to generate the next x_0 and mu
+
         x_n = scaleToRange(55, min_dct, max_dct, min_x, max_x);
         mu_n = scaleToRange(55, min_dct, max_dct, min_mu, max_mu);
       }
 
-      chaotic_dim_array[y] = (struct chaos_dc *) malloc(chaos_len * sizeof(struct chaos_dc));
-      if (chaotic_dim_array[y] == NULL) {
-        LOGE("encryptAlternatingMCUs failed to alloc memory for chaotic_dim_array[%d]", y);
-        return;
+      chaotic_dim_array_y = (struct chaos_dc *) malloc(chaos_len * sizeof(struct chaos_dc));
+      if (chaotic_dim_array_y == NULL) {
+        LOGE("encryptAlternatingMCUs failed to alloc memory for chaotic_dim_array_y (%d)", y);
+        continue;
       }
 
-      generateChaoticSequence(chaotic_dim_array[y], chaos_len, x_n, mu_n);
+      generateChaoticSequence(chaotic_dim_array_y, chaos_len, x_n, mu_n);
 
       // Alternating DCT modification for reduced security but increased usability
       // Shuffle pointers to MCUs based on chaotic sequence
@@ -273,7 +274,7 @@ static void encryptAlternatingMCUs(
 
         // curr_block is in the wrong spot, look up where it should go
         mcu_ptr = mcu_buff[0][k];
-        mcu_ptr_new_pos = chaotic_dim_array[y][curr_block].chaos_pos;
+        mcu_ptr_new_pos = chaotic_dim_array_y[curr_block].chaos_pos;
         //LOGD("iterateAlternatingMCUs curr_block=%d, mcu_ptr_new_pos=%d", curr_block, mcu_ptr_new_pos);
 
         if (mcu_ptr_new_pos != k) {
@@ -293,7 +294,7 @@ static void encryptAlternatingMCUs(
       }
 
       LOGD("encryptAlternatingMCUs finished swap, values: x_n=%f, mu_n=%f", x_n, mu_n);
-      free(chaotic_dim_array[y]);
+      free(chaotic_dim_array_y);
     }
 
     free(sorted_blocks);
@@ -309,7 +310,7 @@ void encryptJpegAlternatingMCUs(
   JpegErrorHandler error_handler{env};
   struct jpeg_source_mgr& source = is_wrapper.public_fields;
   struct jpeg_destination_mgr& destination = os_wrapper.public_fields;
-  struct chaos_dc **chaotic_dim_array;
+  struct chaos_dc *chaotic_dim_array;
 
   if (setjmp(error_handler.setjmpBuffer)) {
     return;
@@ -330,11 +331,13 @@ void encryptJpegAlternatingMCUs(
   jpeg_copy_critical_parameters(&dinfo, &cinfo);
   jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
 
-  chaotic_dim_array = (struct chaos_dc **) malloc(dinfo.comp_info->height_in_blocks * sizeof(struct chaos_dc *));
+  chaotic_dim_array = (struct chaos_dc *) malloc(dinfo.comp_info->height_in_blocks * sizeof(struct chaos_dc));
   if (chaotic_dim_array == NULL) {
     LOGE("encryptJpegAlternatingMCUs failed to alloc memory for chaotic_dim_array");
     goto teardown;
   }
+
+  generateChaoticSequence(chaotic_dim_array, dinfo.comp_info->height_in_blocks, 0.5, 3.57);
 
   LOGD("encryptJpegAlternatingMCUs dinfo.comp_info->height_in_blocks=%d", dinfo.comp_info->height_in_blocks);
 
