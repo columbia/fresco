@@ -40,13 +40,23 @@ struct chaos_pos_jblockrow {
 static void decryptByRow(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr* src_coefs,
-    float x_n,
-    float mu_n) {
-  struct chaos_dc *chaotic_dim_array_y;
+    float x_0,
+    float mu) {
 
   // Iterate over every DCT coefficient in the image, for every color component
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
     jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
+    struct chaos_dc *chaotic_seq;
+    unsigned int width = comp_info->width_in_blocks;
+    unsigned int n_blocks = comp_info->width_in_blocks * comp_info->height_in_blocks;
+
+    chaotic_seq = (struct chaos_dc *) malloc(n_blocks * sizeof(struct chaos_dc));
+    if (chaotic_seq == NULL) {
+      LOGE("decryptByRow failed to alloc memory for chaotic_seq");
+      return;
+    }
+
+    gen_chaotic_per_row(chaotic_seq, width, comp_info->height_in_blocks, x_0, mu);
 
     LOGD("decryptByRow iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
 
@@ -56,32 +66,7 @@ static void decryptByRow(
 
       mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
 
-      if (y > 0) {
-        float min_input = 0;
-        float max_input = comp_info->height_in_blocks;
-        x_n = scaleToRange(y, min_input, max_input, SCALE_MIN_X, SCALE_MAX_X);
-        mu_n = scaleToRange(y, min_input, max_input, SCALE_MIN_MU, SCALE_MAX_MU);
-      }
-
-      chaotic_dim_array_y = (struct chaos_dc *) malloc(comp_info->width_in_blocks * sizeof(struct chaos_dc));
-      if (chaotic_dim_array_y == NULL) {
-        LOGE("decryptByRow failed to alloc memory for chaotic_dim_array_y (%d)", y);
-        return;
-      }
-
-      generateChaoticSequence(chaotic_dim_array_y, comp_info->width_in_blocks, x_n, mu_n);
-
       // Shuffle pointers to MCUs based on chaotic sequence
-      // ex) Chaotic sequence:
-      //  chaos  1.29   2.96   3.10   3.29   5.22
-      //  pos    3      5      2      1      4
-      //         A      B      C      D      E
-      //  pos    1      2      3      4      5
-      //         D      C      A      E      B
-      // Needs decrypt:
-      //  pos    3      5      2      1      4
-      //         D      C      A      E      B
-      //         A      B      C      D      E
       chaos_op = (struct chaos_pos_jcoefptr *) malloc(comp_info->width_in_blocks * sizeof(struct chaos_pos_jcoefptr));
       if (chaos_op == NULL) {
         LOGE("decryptByRow failed to alloc memory for chaos_op");
@@ -93,13 +78,13 @@ static void decryptByRow(
         JCOEFPTR dct_copy = (JCOEFPTR) malloc(DCTSIZE2 * sizeof(JCOEF));
         if (dct_copy == NULL) {
           LOGE("decryptByRow failed to alloc memory for dct_copy");
-          break;
+          goto end_loop;
         }
 
         std::copy(dct_block, dct_block + DCTSIZE2, dct_copy);
 
         chaos_op[i].dcts = dct_copy;
-        chaos_op[i].chaos_pos = chaotic_dim_array_y[i].chaos_pos;
+        chaos_op[i].chaos_pos = chaotic_seq[y * width + i].chaos_pos;
       }
 
       for (int i = 0; i < comp_info->width_in_blocks; i++) {
@@ -108,16 +93,20 @@ static void decryptByRow(
 
         std::copy(chaos_op[dest_pos].dcts, chaos_op[dest_pos].dcts + DCTSIZE2, dct_block);
       }
+      LOGD("decryptByRow finished swap, values: x_0=%f, mu=%f", x_0, mu);
 
-      for (int i = 0; i < comp_info->width_in_blocks; i++) {
-        free(chaos_op[i].dcts);
-      }
-
-      LOGD("decryptByRow finished swap, values: x_n=%f, mu_n=%f", x_n, mu_n);
 end_loop:
-      free(chaotic_dim_array_y);
-      free(chaos_op);
+      if (chaos_op != NULL) {
+        for (int i = 0; i < comp_info->width_in_blocks; i++) {
+          if (chaos_op[i].dcts != NULL)
+            free(chaos_op[i].dcts);
+        }
+
+        free(chaos_op);
+      }
     }
+
+    free(chaotic_seq);
   }
 }
 

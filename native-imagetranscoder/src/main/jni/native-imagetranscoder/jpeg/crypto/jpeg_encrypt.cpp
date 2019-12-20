@@ -200,24 +200,31 @@ static void iterateDCTs(j_decompress_ptr dinfo, jvirt_barray_ptr* src_coefs) {
 static void encryptByRow(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr* src_coefs,
-    float x_n,
-    float mu_n) {
-  struct chaos_dc *chaotic_dim_array_y;
+    float x_0,
+    float mu) {
 
   // Iterate over every DCT coefficient in the image, for every color component
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
     jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
     bool *sorted_blocks;
-    unsigned int chaos_len = comp_info->width_in_blocks;
+    struct chaos_dc *chaotic_seq;
+    unsigned int width = comp_info->width_in_blocks;
+    unsigned int n_blocks = comp_info->width_in_blocks * comp_info->height_in_blocks;
 
     // Note: comp_info->width_in_blocks (chaos_len) is not the same for every component
-    sorted_blocks = (bool *) malloc(comp_info->width_in_blocks * sizeof(bool));
+    sorted_blocks = (bool *) malloc(width * sizeof(bool));
     if (sorted_blocks == NULL) {
       LOGE("encryptByRow failed to alloc memory for sorted_blocks");
       return;
     }
 
-    std::fill(sorted_blocks, sorted_blocks + comp_info->width_in_blocks, false);
+    chaotic_seq = (struct chaos_dc *) malloc(n_blocks * sizeof(struct chaos_dc));
+    if (chaotic_seq == NULL) {
+      LOGE("encryptByRow failed to alloc memory for chaotic_seq");
+      return;
+    }
+
+    gen_chaotic_per_row(chaotic_seq, width, comp_info->height_in_blocks, x_0, mu);
 
     LOGD("encryptByRow iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
 
@@ -227,22 +234,6 @@ static void encryptByRow(
 
       mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
 
-      if (y > 0) {
-        float min_input = 0;
-        float max_input = comp_info->height_in_blocks;
-        x_n = scaleToRange(y, min_input, max_input, SCALE_MIN_X, SCALE_MAX_X);
-        mu_n = scaleToRange(y, min_input, max_input, SCALE_MIN_MU, SCALE_MAX_MU);
-      }
-
-      chaotic_dim_array_y = (struct chaos_dc *) malloc(chaos_len * sizeof(struct chaos_dc));
-      if (chaotic_dim_array_y == NULL) {
-        LOGE("encryptByRow failed to alloc memory for chaotic_dim_array_y (%d)", y);
-        continue;
-      }
-
-      generateChaoticSequence(chaotic_dim_array_y, chaos_len, x_n, mu_n);
-
-      // Alternating DCT modification for reduced security but increased usability
       // Shuffle pointers to MCUs based on chaotic sequence
       // ex) Chaotic sequence:
       //  chaos  1.29   2.96   3.10   3.29   5.22
@@ -252,8 +243,8 @@ static void encryptByRow(
       //         D      C      A      E      B
       k = 0;
       curr_block = k;
-      std::fill(sorted_blocks, sorted_blocks + comp_info->width_in_blocks, false);
-      while (k < comp_info->width_in_blocks) {
+      std::fill(sorted_blocks, sorted_blocks + width, false);
+      while (k < width) {
         unsigned int mcu_ptr_new_pos;
 
         if (sorted_blocks[k]) {
@@ -263,7 +254,8 @@ static void encryptByRow(
         }
 
         // curr_block is in the wrong spot, look up where it should go
-        mcu_ptr_new_pos = chaotic_dim_array_y[curr_block].chaos_pos;
+        mcu_ptr_new_pos = chaotic_seq[y * width + curr_block].chaos_pos;
+        LOGD("encryptByRow mcu_ptr_new_pos=%d", mcu_ptr_new_pos);
 
         if (mcu_ptr_new_pos != k) {
           // Swap curr_block with its correct new position, then mark the new position as sorted
@@ -281,10 +273,10 @@ static void encryptByRow(
         }
       }
 
-      LOGD("encryptByRow finished swap, values: x_n=%f, mu_n=%f", x_n, mu_n);
-      free(chaotic_dim_array_y);
+      LOGD("encryptByRow finished swap, values: x_0=%f, mu=%f", x_0, mu);
     }
 
+    free(chaotic_seq);
     free(sorted_blocks);
   }
 }

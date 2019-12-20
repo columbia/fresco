@@ -29,6 +29,13 @@ void generateChaoticSequence(
     float x_0,
     float mu);
 
+void gen_chaotic_per_row(
+    struct chaos_dc *chaotic_seq,
+    int width,
+    int height,
+    float x_0,
+    float mu);
+
 float scaleToRange(float input, float input_min, float input_max, float scale_min, float scale_max);
 
 int sameSign(JCOEF a, JCOEF b);

@@ -62,6 +62,43 @@ void generateChaoticSequence(
   std::sort(chaotic_seq, chaotic_seq + n, &chaos_sorter);
 }
 
+void populate_row(struct chaos_dc *chaotic_seq_row, int y, int width, float prev_row_last_val, float mu) {
+  for (int j = 0; j < width; j++) {
+    float x_n;
+    if (y == 0 && j == 0) continue;
+
+    if (j == 0)
+      x_n = prev_row_last_val;
+    else
+      x_n = chaotic_seq_row[j - 1].chaos;
+
+    chaotic_seq_row[j].chaos = mu * x_n * (1 - x_n);
+    chaotic_seq_row[j].chaos_pos = j;
+  }
+}
+
+void gen_chaotic_per_row(
+    struct chaos_dc *chaotic_seq,
+    int width,
+    int height,
+    float x_0,
+    float mu) {
+  float prev_val = 0.0;
+
+  chaotic_seq[0].chaos = mu * x_0 * (1 - x_0);
+  chaotic_seq[0].chaos_pos = 0;
+
+  for (int y = 0; y < height; y++) {
+    populate_row(&chaotic_seq[y * width], y, width, prev_val, mu);
+    prev_val = chaotic_seq[y * width + width - 1].chaos;
+
+    // Order the sequence in ascending order based on the chaotic value
+    // Each value's original position is maintained via the chaotic_pos member
+    std::sort(&chaotic_seq[y * width], &chaotic_seq[y * width] + width, &chaos_sorter);
+  }
+
+}
+
 float scaleToRange(float input, float input_min, float input_max, float scale_min, float scale_max) {
   return (scale_max - scale_min) * (input - input_min) / (input_max - input_min) + scale_min;
 }
