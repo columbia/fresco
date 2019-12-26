@@ -211,7 +211,7 @@ static void encryptByRow(
     unsigned int width = comp_info->width_in_blocks;
     unsigned int n_blocks = comp_info->width_in_blocks * comp_info->height_in_blocks;
 
-    // Note: comp_info->width_in_blocks (chaos_len) is not the same for every component
+    // Note: comp_info->width_in_blocks (width) is not the same for every component
     sorted_blocks = (bool *) malloc(width * sizeof(bool));
     if (sorted_blocks == NULL) {
       LOGE("encryptByRow failed to alloc memory for sorted_blocks");

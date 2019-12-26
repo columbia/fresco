@@ -266,4 +266,15 @@ subprojects {
             ['src/**/*.c', 'src/**/*.h', '*.mk'], // Files to compile
             "libwebp-${LIBWEBP_VERSION}" // Final destination dir
     )
+
+    // GNU Multiple Precision (GMP)
+    createNativeLibrariesTasks(
+            'LibGMP',      // Name for the tasks
+            "https://gmplib.org/download/gmp/gmp-${LIBGMP_VERSION}.tar.bz2",
+            "gmp-${LIBGMP_VERSION}.tar.bz2", // The downloaded file
+            'libgmp', // The folder where the file is downloaded
+            "gmp-${LIBGMP_VERSION}", // The first dir where we have put our customisation
+            ['**/*.c', '**/*.h','**/*.S', '**/*.asm', '**/*.inc', '*.mk'], // Files to compile
+            "libgmp-${LIBGMP_VERSION}" // Final destination dir
+    )
 }
