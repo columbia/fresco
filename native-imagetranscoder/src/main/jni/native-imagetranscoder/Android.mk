@@ -37,8 +37,8 @@ LOCAL_LDFLAGS += $(FRESCO_CPP_LDFLAGS)
 LOCAL_STATIC_LIBRARIES += fb_jpegturbo
 LOCAL_LDFLAGS += -Wl,--exclude-libs,libfb_jpegturbo.a
 
-LOCAL_STATIC_LIBRARIES += fb_gmp
-LOCAL_LDFLAGS += -Wl,--exclude-libs,libfb_gmp.a
+LOCAL_STATIC_LIBRARIES += columbia_gmp
+LOCAL_LDFLAGS += -Wl,--exclude-libs,libcolumbia_gmp.a
 
 include $(BUILD_SHARED_LIBRARY)
 $(call import-module,libjpeg-turbo-1.5.3)
