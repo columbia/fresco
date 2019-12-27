@@ -9,6 +9,7 @@
 extern "C" {
   #include "transupp.h"
 }
+#include <gmp.h>
 
 #include "decoded_image.h"
 #include "exceptions_handler.h"
@@ -200,8 +201,8 @@ static void iterateDCTs(j_decompress_ptr dinfo, jvirt_barray_ptr* src_coefs) {
 static void encryptByRow(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr* src_coefs,
-    float x_0,
-    float mu) {
+    mpf_t x_0,
+    mpf_t mu) {
 
   // Iterate over every DCT coefficient in the image, for every color component
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
@@ -255,7 +256,7 @@ static void encryptByRow(
 
         // curr_block is in the wrong spot, look up where it should go
         mcu_ptr_new_pos = chaotic_seq[y * width + curr_block].chaos_pos;
-        LOGD("encryptByRow mcu_ptr_new_pos=%d", mcu_ptr_new_pos);
+        //LOGD("encryptByRow mcu_ptr_new_pos=%d", mcu_ptr_new_pos);
 
         if (mcu_ptr_new_pos != k) {
           // Swap curr_block with its correct new position, then mark the new position as sorted
@@ -273,7 +274,11 @@ static void encryptByRow(
         }
       }
 
-      LOGD("encryptByRow finished swap, values: x_0=%f, mu=%f", x_0, mu);
+      //LOGD("encryptByRow finished swap, values: x_0=%f, mu=%f", x_0, mu);
+    }
+
+    for (int i; i < n_blocks; i++) {
+      mpf_clear(chaotic_seq[i].chaos_gmp);
     }
 
     free(chaotic_seq);
@@ -284,8 +289,8 @@ static void encryptByRow(
 static void encryptByColumn(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr* src_coefs,
-    float x_n,
-    float mu_n) {
+    mpf_t x_n,
+    mpf_t mu_n) {
 
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
     jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
@@ -311,7 +316,7 @@ static void encryptByColumn(
       return;
     }
 
-    generateChaoticSequence(chaotic_seq, chaos_len, x_n, mu_n);
+    gen_chaotic_sequence(chaotic_seq, chaos_len, x_n, mu_n);
 
     std::fill(sorted_rows, sorted_rows + chaos_len, false);
 
@@ -349,6 +354,10 @@ static void encryptByColumn(
       }
     }
 
+    for (int i; i < chaos_len; i++) {
+      mpf_clear(chaotic_seq[i].chaos_gmp);
+    }
+
     free(sorted_rows);
     free(chaotic_seq);
   }
@@ -363,6 +372,10 @@ void encryptJpegByRowAndColumn(
   JpegErrorHandler error_handler{env};
   struct jpeg_source_mgr& source = is_wrapper.public_fields;
   struct jpeg_destination_mgr& destination = os_wrapper.public_fields;
+  mpf_t x_0;
+  mpf_t mu;
+  mp_exp_t exponent;
+  char *mpf_val;
 
   if (setjmp(error_handler.setjmpBuffer)) {
     return;
@@ -383,14 +396,30 @@ void encryptJpegByRowAndColumn(
   jpeg_copy_critical_parameters(&dinfo, &cinfo);
   jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
 
-  encryptByRow(&dinfo, src_coefs, 0.5, 3.57);
-  encryptByColumn(&dinfo, src_coefs, 0.5, 3.57);
+  if (mpf_init_set_str(x_0, "5.55555555555555555556e-1", 10)) {
+    LOGD("encryptJpegByRowAndColumn failed to mpf_set_str(x_0)");
+    goto teardown;
+  }
+  if (mpf_init_set_str(mu, "3.577777777777777777e0", 10)) {
+    LOGD("encryptJpegByRowAndColumn failed to mpf_set_str(mu)");
+    goto teardown;
+  }
+
+  mpf_val = mpf_get_str(NULL, &exponent, 10, 500, x_0);
+  LOGD("encryptJpegByRowAndColumn allocated mpf_t x_0 and mu");
+  LOGD("fixed point mpf %s", mpf_val);
+  free(mpf_val);
+  LOGD("encryptJpegByRowAndColumn allocated mpf_t x_0 and mu 2");
+
+  encryptByRow(&dinfo, src_coefs, x_0, mu);
+  encryptByColumn(&dinfo, src_coefs, x_0, mu);
 
   jpeg_write_coefficients(&cinfo, src_coefs);
 
   LOGD("encryptJpegByRowAndColumn finished");
 
 teardown:
+  mpf_clears(x_0, mu, NULL);
   jpeg_finish_compress(&cinfo);
   jpeg_destroy_compress(&cinfo);
   jpeg_destroy_decompress(&dinfo);
