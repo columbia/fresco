@@ -86,7 +86,8 @@ public class EncryptProducer implements Producer<EncodedImage> {
                   doEncrypt(
                           encodedImage,
                           status,
-                          Preconditions.checkNotNull(encryptor));
+                          Preconditions.checkNotNull(encryptor),
+                          mProducerContext.getImageRequest().getJpegCryptoKey());
                 }
               };
       mJobScheduler = new JobScheduler(mExecutor, job, MIN_ENCRYPT_INTERVAL_MS);
@@ -154,7 +155,8 @@ public class EncryptProducer implements Producer<EncodedImage> {
     }
 
     private void doEncrypt(
-            EncodedImage encodedImage, @Consumer.Status int status, ImageEncryptor imageEncryptor) {
+            EncodedImage encodedImage, @Consumer.Status int status, ImageEncryptor imageEncryptor,
+            JpegCryptoKey key) {
       mProducerContext.getProducerListener().onProducerStart(mProducerContext, PRODUCER_NAME);
       //ImageRequest imageRequest = mProducerContext.getImageRequest();
       PooledByteBufferOutputStream outputStream = mPooledByteBufferFactory.newOutputStream();
@@ -166,7 +168,7 @@ public class EncryptProducer implements Producer<EncodedImage> {
                 imageEncryptor.encrypt(
                         encodedImage,
                         outputStream,
-                        JpegCryptoKey.getTestKey());
+                        key);
 
         if (result.getEncryptStatus() == EncryptStatus.ENCRYPTING_ERROR) {
           throw new RuntimeException("Error while encrypting the image");
@@ -234,7 +236,7 @@ public class EncryptProducer implements Producer<EncodedImage> {
       return TriState.UNSET;
     }
 
-    if (!request.shouldEncrypt() || !imageEncryptor.canEncrypt(encodedImage.getImageFormat())) {
+    if (!request.shouldEncrypt() || !imageEncryptor.canEncrypt(encodedImage.getImageFormat()) || request.getJpegCryptoKey() == null) {
       return TriState.NO;
     }
 

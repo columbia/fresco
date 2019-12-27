@@ -24,6 +24,7 @@ import com.facebook.common.media.MediaUtils;
 import com.facebook.common.util.UriUtil;
 import com.facebook.imagepipeline.common.BytesRange;
 import com.facebook.imagepipeline.common.ImageDecodeOptions;
+import com.facebook.imagepipeline.common.JpegCryptoKey;
 import com.facebook.imagepipeline.common.Priority;
 import com.facebook.imagepipeline.common.ResizeOptions;
 import com.facebook.imagepipeline.common.RotationOptions;
@@ -70,6 +71,9 @@ public class ImageRequest {
 
   /** decrypt or not */
   private final boolean mDecrypt;
+
+  /** key to use for encryption/decryption */
+  private final JpegCryptoKey jpegCryptoKey;
 
   /** Range of bytes to request from the network */
   private final @Nullable BytesRange mBytesRange;
@@ -134,6 +138,7 @@ public class ImageRequest {
             : builder.getRotationOptions();
     mEncrypt = builder.shouldEncrypt();
     mDecrypt = builder.shouldDecrypt();
+    jpegCryptoKey = builder.getJpegCryptoKey();
     mBytesRange = builder.getBytesRange();
 
     mRequestPriority = builder.getRequestPriority();
@@ -183,6 +188,10 @@ public class ImageRequest {
 
   public boolean shouldDecrypt() {
     return mDecrypt;
+  }
+
+  public JpegCryptoKey getJpegCryptoKey() {
+    return jpegCryptoKey;
   }
 
   /** @deprecated Use {@link #getRotationOptions()} */

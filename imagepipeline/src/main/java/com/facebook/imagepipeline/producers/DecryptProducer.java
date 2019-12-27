@@ -24,7 +24,6 @@ import java.util.concurrent.Executor;
 import javax.annotation.Nullable;
 
 import static com.facebook.imageformat.DefaultImageFormats.JPEG;
-import static com.facebook.imagepipeline.transcoder.JpegTranscoderUtils.DEFAULT_JPEG_QUALITY;
 
 public class DecryptProducer implements Producer<EncodedImage> {
   private static final String PRODUCER_NAME = "DecryptProducer";
@@ -86,7 +85,8 @@ public class DecryptProducer implements Producer<EncodedImage> {
                   doDecrypt(
                           encodedImage,
                           status,
-                          Preconditions.checkNotNull(decryptor));
+                          Preconditions.checkNotNull(decryptor),
+                          mProducerContext.getImageRequest().getJpegCryptoKey());
                 }
               };
       mJobScheduler = new JobScheduler(mExecutor, job, MIN_DECRYPT_INTERVAL_MS);
@@ -154,7 +154,10 @@ public class DecryptProducer implements Producer<EncodedImage> {
     }
 
     private void doDecrypt(
-            EncodedImage encodedImage, @Status int status, ImageDecryptor imageDecryptor) {
+            EncodedImage encodedImage,
+            @Status int status,
+            ImageDecryptor imageDecryptor,
+            JpegCryptoKey key) {
       mProducerContext.getProducerListener().onProducerStart(mProducerContext, PRODUCER_NAME);
       //ImageRequest imageRequest = mProducerContext.getImageRequest();
       PooledByteBufferOutputStream outputStream = mPooledByteBufferFactory.newOutputStream();
@@ -166,7 +169,7 @@ public class DecryptProducer implements Producer<EncodedImage> {
                 imageDecryptor.decrypt(
                         encodedImage,
                         outputStream,
-                        JpegCryptoKey.getTestKey());
+                        key);
 
         if (result.getDecryptStatus() == DecryptStatus.DECRYPTING_ERROR) {
           throw new RuntimeException("Error while encrypting the image");
@@ -235,7 +238,7 @@ public class DecryptProducer implements Producer<EncodedImage> {
       return TriState.UNSET;
     }
 
-    if (!request.shouldDecrypt() || !imageDecryptor.canDecrypt(encodedImage.getImageFormat())) {
+    if (!request.shouldDecrypt() || !imageDecryptor.canDecrypt(encodedImage.getImageFormat()) || request.getJpegCryptoKey() == null) {
       return TriState.NO;
     }
 

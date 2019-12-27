@@ -23,6 +23,7 @@ import com.facebook.fresco.samples.showcase.BaseShowcaseFragment;
 import com.facebook.fresco.samples.showcase.R;
 import com.facebook.fresco.samples.showcase.misc.ImageUriProvider;
 import com.facebook.imagepipeline.common.ImageDecodeOptionsBuilder;
+import com.facebook.imagepipeline.common.JpegCryptoKey;
 import com.facebook.imagepipeline.core.DefaultExecutorSupplier;
 import com.facebook.imagepipeline.core.ImagePipeline;
 import com.facebook.imagepipeline.decryptor.ImageDecryptor;
@@ -111,7 +112,7 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
                     new View.OnClickListener() {
                       @Override
                       public void onClick(View v) {
-                        setDecryptDiskOptions();
+                        setDecryptFromUrlOptions();
                       }
                     });
   }
@@ -121,6 +122,7 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
     ImageRequest imageRequest =
             ImageRequestBuilder.newBuilderWithSource(mUri)
                     .setEncrypt(true)
+                    .setJpegCryptoKey(JpegCryptoKey.getTestKey())
                     .setImageDecodeOptions(new ImageDecodeOptionsBuilder().build())
                     .build();
 
@@ -139,32 +141,29 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
       ImageRequest imageRequest =
               ImageRequestBuilder.newBuilderWithSource(lastSavedImage)
                       .setDecrypt(true)
+                      .setJpegCryptoKey(JpegCryptoKey.getTestKey())
                       .setImageDecodeOptions(new ImageDecodeOptionsBuilder().build())
                       .build();
       DataSource<CloseableReference<PooledByteBuffer>> dataSource = pipeline
               .fetchEncodedImage(imageRequest, this);
 
-      final ImageDecryptorFactory factory = NativeImageDecryptorFactory
-              .getNativeImageDecryptorFactory(pipeline.getConfig().getExperiments().getMaxBitmapSize());
+      final ImageDecryptorFactory factory = NativeImageDecryptorFactory.getNativeImageDecryptorFactory();
 
       dataSourceToDisk(dataSource, mDraweeDecryptView, null, factory);
     }
   }
 
-  private void setDecryptDiskOptions() {
-    final String filePath = "animal_c_xl.jpggoogle.jpg";
-    final File imageFile = new File(encryptedImageDir, filePath);
-    if (imageFile.exists()) {
-      pipeline.clearCaches();
-      Uri testImage = Uri.parse(imageFile.toURI().toString());
-      ImageRequest imageRequest =
-              ImageRequestBuilder.newBuilderWithSource(testImage)
-                      .setDecrypt(true)
-                      .setImageDecodeOptions(new ImageDecodeOptionsBuilder().build())
-                      .build();
-      FLog.d(TAG, "Decrypting %s from disk", imageFile.getAbsolutePath());
-      mDraweeDecryptDiskView.setImageRequest(imageRequest);
-    }
+  private void setDecryptFromUrlOptions() {
+    pipeline.clearCaches();
+    Uri testImage = Uri.parse("");
+    ImageRequest imageRequest =
+            ImageRequestBuilder.newBuilderWithSource(testImage)
+                    .setDecrypt(true)
+                    .setJpegCryptoKey(JpegCryptoKey.getTestKey())
+                    .setImageDecodeOptions(new ImageDecodeOptionsBuilder().build())
+                    .build();
+    FLog.d(TAG, "Decrypting from url %s", testImage.toString());
+    mDraweeDecryptDiskView.setImageRequest(imageRequest);
   }
 
   private void dataSourceToDisk(final DataSource<CloseableReference<PooledByteBuffer>> dataSource,
@@ -197,11 +196,11 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
 
                       if (encryptorFactory != null) {
                         final ImageEncryptor encryptor = encryptorFactory.createImageEncryptor(encodedImage.getImageFormat());
-                        encryptor.encrypt(encodedImage, fileOutputStream, null, null);
+                        encryptor.encrypt(encodedImage, fileOutputStream, JpegCryptoKey.getTestKey());
                         FLog.d(TAG, "Wrote %s encrypted to %s (size: %s bytes)", mUri, tempFile.getAbsolutePath(), tempFile.length() / 8);
                       } else if (decryptorFactory != null) {
                         final ImageDecryptor decryptor = decryptorFactory.createImageDecryptor(encodedImage.getImageFormat());
-                        decryptor.decrypt(encodedImage, fileOutputStream, null, null);
+                        decryptor.decrypt(encodedImage, fileOutputStream, JpegCryptoKey.getTestKey());
                         FLog.d(TAG, "Wrote %s decrypted to %s (size: %s bytes)", mUri, tempFile.getAbsolutePath(), tempFile.length() / 8);
                       }
 

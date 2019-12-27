@@ -15,6 +15,7 @@ import com.facebook.common.internal.Preconditions;
 import com.facebook.common.util.UriUtil;
 import com.facebook.imagepipeline.common.BytesRange;
 import com.facebook.imagepipeline.common.ImageDecodeOptions;
+import com.facebook.imagepipeline.common.JpegCryptoKey;
 import com.facebook.imagepipeline.common.Priority;
 import com.facebook.imagepipeline.common.ResizeOptions;
 import com.facebook.imagepipeline.common.RotationOptions;
@@ -32,6 +33,7 @@ public class ImageRequestBuilder {
   private @Nullable RotationOptions mRotationOptions = null;
   private boolean mEncrypt = false;
   private boolean mDecrypt = false;
+  private @Nullable JpegCryptoKey jpegCryptoKey = null;
   private ImageDecodeOptions mImageDecodeOptions = ImageDecodeOptions.defaults();
   private CacheChoice mCacheChoice = CacheChoice.DEFAULT;
   private boolean mProgressiveRenderingEnabled =
@@ -217,6 +219,16 @@ public class ImageRequestBuilder {
   /** Returns whether decrypting should take place. */
   public boolean shouldDecrypt() {
     return mDecrypt;
+  }
+
+  @Nullable
+  public JpegCryptoKey getJpegCryptoKey() {
+    return jpegCryptoKey;
+  }
+
+  public ImageRequestBuilder setJpegCryptoKey(@Nullable JpegCryptoKey jpegCryptoKey) {
+    this.jpegCryptoKey = jpegCryptoKey;
+    return this;
   }
 
   /**
