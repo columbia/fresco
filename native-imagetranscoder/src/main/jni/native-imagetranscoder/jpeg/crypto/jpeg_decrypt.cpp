@@ -9,6 +9,7 @@
 extern "C" {
   #include "transupp.h"
 }
+#include <gmp.h>
 
 #include "decoded_image.h"
 #include "exceptions_handler.h"
@@ -40,8 +41,8 @@ struct chaos_pos_jblockrow {
 static void decryptByRow(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr* src_coefs,
-    float x_0,
-    float mu) {
+    mpf_t x_0,
+    mpf_t mu) {
 
   // Iterate over every DCT coefficient in the image, for every color component
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
@@ -106,6 +107,10 @@ end_loop:
       }
     }
 
+    for (int i; i < n_blocks; i++) {
+      mpf_clear(chaotic_seq[i].chaos_gmp);
+    }
+
     free(chaotic_seq);
   }
 }
@@ -113,8 +118,8 @@ end_loop:
 static void decryptByColumn(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr* src_coefs,
-    float x_n,
-    float mu_n) {
+    mpf_t x_n,
+    mpf_t mu_n) {
 
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
     jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
@@ -136,7 +141,7 @@ static void decryptByColumn(
       goto end_loop;
     }
 
-    generateChaoticSequence(chaotic_seq, chaos_len, x_n, mu_n);
+    gen_chaotic_sequence(chaotic_seq, chaos_len, x_n, mu_n);
 
     for (int y = 0; y < comp_info->height_in_blocks; y++) {
       JBLOCKROW row;
@@ -176,8 +181,12 @@ end_loop:
       if (chaos_op != NULL && chaos_op[i].row != NULL)
         free(chaos_op[i].row);
     }
-    free(chaotic_seq);
     free(chaos_op);
+
+    for (int i; i < chaos_len; i++) {
+      mpf_clear(chaotic_seq[i].chaos_gmp);
+    }
+    free(chaotic_seq);
   }
 }
 
@@ -190,6 +199,8 @@ void decryptJpeg(
   JpegErrorHandler error_handler{env};
   struct jpeg_source_mgr& source = is_wrapper.public_fields;
   struct jpeg_destination_mgr& destination = os_wrapper.public_fields;
+  mpf_t x_0;
+  mpf_t mu;
 
   if (setjmp(error_handler.setjmpBuffer)) {
     return;
@@ -210,8 +221,17 @@ void decryptJpeg(
   jpeg_copy_critical_parameters(&dinfo, &cinfo);
   jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
 
-  decryptByColumn(&dinfo, src_coefs, 0.5, 3.57);
-  decryptByRow(&dinfo, src_coefs, 0.5, 3.57);
+  if (mpf_init_set_str(x_0, "5.55555555555555555556e-1", 10)) {
+    LOGD("decryptJpeg failed to mpf_set_str(x_0)");
+    goto teardown;
+  }
+  if (mpf_init_set_str(mu, "3.577777777777777777e0", 10)) {
+    LOGD("decryptJpeg failed to mpf_set_str(mu)");
+    goto teardown;
+  }
+
+  decryptByColumn(&dinfo, src_coefs, x_0, mu);
+  decryptByRow(&dinfo, src_coefs, x_0, mu);
 
   jpeg_write_coefficients(&cinfo, src_coefs);
 
