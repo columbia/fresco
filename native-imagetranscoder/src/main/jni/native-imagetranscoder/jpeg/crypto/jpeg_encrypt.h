@@ -12,7 +12,9 @@ namespace crypto {
 void encryptJpeg(
     JNIEnv *env,
     jobject is,
-    jobject os);
+    jobject os,
+    jstring x_0_jstr,
+    jstring mu_jstr);
 
 } } } }
 #endif //FRESCO_JPEG_CRYPTO_H

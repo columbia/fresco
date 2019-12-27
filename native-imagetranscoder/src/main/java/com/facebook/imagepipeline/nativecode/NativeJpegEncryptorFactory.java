@@ -10,11 +10,9 @@ import javax.annotation.Nullable;
 
 public class NativeJpegEncryptorFactory implements ImageEncryptorFactory {
 
-  private final int mMaxBitmapSize;
-
   @DoNotStrip
   public NativeJpegEncryptorFactory(final int maxBitmapSize) {
-    mMaxBitmapSize = maxBitmapSize;
+
   }
 
   @DoNotStrip
@@ -24,6 +22,6 @@ public class NativeJpegEncryptorFactory implements ImageEncryptorFactory {
     if (imageFormat != DefaultImageFormats.JPEG) {
       return null;
     }
-    return new NativeJpegEncryptor(mMaxBitmapSize);
+    return new NativeJpegEncryptor();
   }
 }

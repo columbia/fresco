@@ -16,8 +16,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-import javax.annotation.Nullable;
-
 /** Decryptor for jpeg images, using native code and libjpeg-turbo library. */
 @DoNotStrip
 public class NativeJpegDecryptor implements ImageDecryptor {

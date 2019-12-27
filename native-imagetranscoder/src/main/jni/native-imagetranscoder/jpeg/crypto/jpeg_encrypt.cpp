@@ -366,7 +366,9 @@ static void encryptByColumn(
 void encryptJpegByRowAndColumn(
     JNIEnv *env,
     jobject is,
-    jobject os) {
+    jobject os,
+    jstring x_0_jstr,
+    jstring mu_jstr) {
   JpegInputStreamWrapper is_wrapper{env, is};
   JpegOutputStreamWrapper os_wrapper{env, os};
   JpegErrorHandler error_handler{env};
@@ -376,6 +378,10 @@ void encryptJpegByRowAndColumn(
   mpf_t mu;
   mp_exp_t exponent;
   char *mpf_val;
+  jsize x_0_len = env->GetStringUTFLength(x_0_jstr);
+  jsize mu_len = env->GetStringUTFLength(mu_jstr);
+  const char *x_0_char = env->GetStringUTFChars(x_0_jstr, (jboolean *) 0);
+  const char *mu_char = env->GetStringUTFChars(mu_jstr, (jboolean *) 0);
 
   if (setjmp(error_handler.setjmpBuffer)) {
     return;
@@ -396,11 +402,11 @@ void encryptJpegByRowAndColumn(
   jpeg_copy_critical_parameters(&dinfo, &cinfo);
   jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
 
-  if (mpf_init_set_str(x_0, "5.55555555555555555556e-1", 10)) {
+  if (mpf_init_set_str(x_0, x_0_char, 10)) {
     LOGD("encryptJpegByRowAndColumn failed to mpf_set_str(x_0)");
     goto teardown;
   }
-  if (mpf_init_set_str(mu, "3.577777777777777777e0", 10)) {
+  if (mpf_init_set_str(mu, mu_char, 10)) {
     LOGD("encryptJpegByRowAndColumn failed to mpf_set_str(mu)");
     goto teardown;
   }
@@ -419,6 +425,8 @@ void encryptJpegByRowAndColumn(
   LOGD("encryptJpegByRowAndColumn finished");
 
 teardown:
+  env->ReleaseStringUTFChars(x_0_jstr, x_0_char);
+  env->ReleaseStringUTFChars(mu_jstr, mu_char);
   mpf_clears(x_0, mu, NULL);
   jpeg_finish_compress(&cinfo);
   jpeg_destroy_compress(&cinfo);
@@ -428,8 +436,10 @@ teardown:
 void encryptJpeg(
     JNIEnv *env,
     jobject is,
-    jobject os) {
-  encryptJpegByRowAndColumn(env, is, os);
+    jobject os,
+    jstring x_0_jstr,
+    jstring mu_jstr) {
+  encryptJpegByRowAndColumn(env, is, os, x_0_jstr, mu_jstr);
 }
 
 } } } }
