@@ -1,0 +1,3 @@
+[submodule "native-imagetranscoder/src/main/jni/gmp"]
+	path = native-imagetranscoder/src/main/jni/gmp
+	url = git://github.com/Rupan/gmp.git

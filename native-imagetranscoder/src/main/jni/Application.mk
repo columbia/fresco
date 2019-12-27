@@ -17,6 +17,7 @@ APP_LDFLAGS := -Wl,--build-id
 
 NDK_TOOLCHAIN_VERSION := clang
 
+APP_MODULES := gmp native-imagetranscoder
 
 # We link our libs with static stl implementation. Because of that we need to
 # hide all stl related symbols to make them unaccessible from the outside.
