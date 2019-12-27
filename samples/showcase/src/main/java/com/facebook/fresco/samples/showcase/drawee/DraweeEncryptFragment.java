@@ -53,6 +53,7 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
 
   private File encryptedImageDir;
   private Uri lastSavedImage = null;
+  private JpegCryptoKey lastKey = null;
 
   private ImagePipeline pipeline;
 
@@ -85,6 +86,7 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
     mDraweeEncryptView = view.findViewById(R.id.drawee_view);
     mDraweeDecryptView = view.findViewById(R.id.drawee_decrypt);
     mDraweeDecryptDiskView = view.findViewById(R.id.drawee_decrypt_disk);
+    setNewKey();
 
     setEncryptOptions();
 
@@ -117,12 +119,17 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
                     });
   }
 
+  private void setNewKey() {
+    lastKey = new JpegCryptoKey.Builder().generateNewValues(100, 100).build();
+    FLog.d(TAG, "Set lastKey: %s", lastKey);
+  }
+
   private void setEncryptOptions() {
     pipeline.clearCaches();
     ImageRequest imageRequest =
             ImageRequestBuilder.newBuilderWithSource(mUri)
                     .setEncrypt(true)
-                    .setJpegCryptoKey(JpegCryptoKey.getTestKey())
+                    .setJpegCryptoKey(lastKey)
                     .setImageDecodeOptions(new ImageDecodeOptionsBuilder().build())
                     .build();
 
@@ -140,7 +147,7 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
       ImageRequest imageRequest =
               ImageRequestBuilder.newBuilderWithSource(lastSavedImage)
                       .setDecrypt(true)
-                      .setJpegCryptoKey(JpegCryptoKey.getTestKey())
+                      .setJpegCryptoKey(lastKey)
                       .setImageDecodeOptions(new ImageDecodeOptionsBuilder().build())
                       .build();
       DataSource<CloseableReference<PooledByteBuffer>> dataSource = pipeline
