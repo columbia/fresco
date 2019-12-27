@@ -1,6 +1,7 @@
 package com.facebook.imagepipeline.decryptor;
 
 import com.facebook.imageformat.ImageFormat;
+import com.facebook.imagepipeline.common.JpegCryptoKey;
 import com.facebook.imagepipeline.image.EncodedImage;
 
 import java.io.IOException;
@@ -15,18 +16,14 @@ public interface ImageDecryptor {
    *
    * @param encodedImage The {@link EncodedImage} that will be decrypted.
    * @param outputStream The {@link OutputStream} where the newly created image is written to.
-   * @param outputFormat The desired {@link ImageFormat} of the newly created image. If this is null
-   *     the same format as the input image will be used.
-   * @param quality The desired quality of the newly created image. If this is null, the default
-   *     quality of the decryptor will be applied.
+   * @param key {@link JpegCryptoKey} representing the secret values to use for the crypto.
    * @return The {@link ImageDecryptResult} generated when encoding the image.
    * @throws IOException if I/O error happens when reading or writing the images.
    */
   ImageDecryptResult decrypt(
           EncodedImage encodedImage,
           OutputStream outputStream,
-          @Nullable ImageFormat outputFormat,
-          @Nullable Integer quality)
+          JpegCryptoKey key)
           throws IOException;
 
   /**

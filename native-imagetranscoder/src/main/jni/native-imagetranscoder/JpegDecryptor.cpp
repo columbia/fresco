@@ -14,17 +14,21 @@ static void JpegDecryptor_decryptJpeg(
     JNIEnv* env,
     jclass /* clzz */,
     jobject is,
-    jobject os) {
+    jobject os,
+    jstring x_0_jstr,
+    jstring mu_jstr) {
   RETURN_IF_EXCEPTION_PENDING;
   decryptJpeg(
       env,
       is,
-      os);
+      os,
+      x_0_jstr,
+      mu_jstr);
 }
 
 static JNINativeMethod gJpegDecryptorMethods[] = {
   { "nativeDecryptJpeg",
-      "(Ljava/io/InputStream;Ljava/io/OutputStream;)V",
+      "(Ljava/io/InputStream;Ljava/io/OutputStream;Ljava/lang/String;Ljava/lang/String;)V",
       (void*) JpegDecryptor_decryptJpeg },
 };
 

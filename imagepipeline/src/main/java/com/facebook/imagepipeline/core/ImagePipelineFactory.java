@@ -440,8 +440,7 @@ public class ImagePipelineFactory {
 
   private ImageDecryptorFactory getImageDecryptorFactory() {
     if (mImageDecryptorFactory == null) {
-      mImageDecryptorFactory = NativeImageDecryptorFactory
-              .getNativeImageDecryptorFactory(mConfig.getExperiments().getMaxBitmapSize());
+      mImageDecryptorFactory = NativeImageDecryptorFactory.getNativeImageDecryptorFactory();
     }
     return mImageDecryptorFactory;
   }

@@ -9,6 +9,7 @@ import com.facebook.common.memory.PooledByteBufferOutputStream;
 import com.facebook.common.references.CloseableReference;
 import com.facebook.common.util.TriState;
 import com.facebook.imageformat.ImageFormat;
+import com.facebook.imagepipeline.common.JpegCryptoKey;
 import com.facebook.imagepipeline.decryptor.DecryptStatus;
 import com.facebook.imagepipeline.decryptor.ImageDecryptResult;
 import com.facebook.imagepipeline.decryptor.ImageDecryptor;
@@ -165,8 +166,7 @@ public class DecryptProducer implements Producer<EncodedImage> {
                 imageDecryptor.decrypt(
                         encodedImage,
                         outputStream,
-                        null,
-                        DEFAULT_JPEG_QUALITY);
+                        JpegCryptoKey.getTestKey());
 
         if (result.getDecryptStatus() == DecryptStatus.DECRYPTING_ERROR) {
           throw new RuntimeException("Error while encrypting the image");

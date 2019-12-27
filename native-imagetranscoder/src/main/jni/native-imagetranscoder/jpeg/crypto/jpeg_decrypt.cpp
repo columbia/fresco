@@ -94,7 +94,7 @@ static void decryptByRow(
 
         std::copy(chaos_op[dest_pos].dcts, chaos_op[dest_pos].dcts + DCTSIZE2, dct_block);
       }
-      LOGD("decryptByRow finished swap, values: x_0=%f, mu=%f", x_0, mu);
+      LOGD("decryptByRow finished swap for component %d", comp_i);
 
 end_loop:
       if (chaos_op != NULL) {
@@ -174,7 +174,7 @@ static void decryptByColumn(
         std::copy(chaos_op[dest_pos].row[i], chaos_op[dest_pos].row[i] + DCTSIZE2, row[i]);
       }
     }
-    LOGD("decryptByColumn finished swap, values: x_n=%f, mu_n=%f", x_n, mu_n);
+    LOGD("decryptByColumn finished swap for component %d", comp_i);
 
 end_loop:
     for (int i = 0; i < comp_info->height_in_blocks; i++) {
@@ -193,7 +193,9 @@ end_loop:
 void decryptJpeg(
     JNIEnv *env,
     jobject is,
-    jobject os) {
+    jobject os,
+    jstring x_0_jstr,
+    jstring mu_jstr) {
   JpegInputStreamWrapper is_wrapper{env, is};
   JpegOutputStreamWrapper os_wrapper{env, os};
   JpegErrorHandler error_handler{env};
@@ -201,6 +203,10 @@ void decryptJpeg(
   struct jpeg_destination_mgr& destination = os_wrapper.public_fields;
   mpf_t x_0;
   mpf_t mu;
+  jsize x_0_len = env->GetStringUTFLength(x_0_jstr);
+  jsize mu_len = env->GetStringUTFLength(mu_jstr);
+  const char *x_0_char = env->GetStringUTFChars(x_0_jstr, (jboolean *) 0);
+  const char *mu_char = env->GetStringUTFChars(mu_jstr, (jboolean *) 0);
 
   if (setjmp(error_handler.setjmpBuffer)) {
     return;
@@ -221,11 +227,11 @@ void decryptJpeg(
   jpeg_copy_critical_parameters(&dinfo, &cinfo);
   jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
 
-  if (mpf_init_set_str(x_0, "5.55555555555555555556e-1", 10)) {
+  if (mpf_init_set_str(x_0, x_0_char, 10)) {
     LOGD("decryptJpeg failed to mpf_set_str(x_0)");
     goto teardown;
   }
-  if (mpf_init_set_str(mu, "3.577777777777777777e0", 10)) {
+  if (mpf_init_set_str(mu, mu_char, 10)) {
     LOGD("decryptJpeg failed to mpf_set_str(mu)");
     goto teardown;
   }
@@ -238,6 +244,8 @@ void decryptJpeg(
   LOGD("decryptJpeg finished");
 
 teardown:
+  env->ReleaseStringUTFChars(x_0_jstr, x_0_char);
+  env->ReleaseStringUTFChars(mu_jstr, mu_char);
   jpeg_finish_compress(&cinfo);
   jpeg_destroy_compress(&cinfo);
   jpeg_destroy_decompress(&dinfo);

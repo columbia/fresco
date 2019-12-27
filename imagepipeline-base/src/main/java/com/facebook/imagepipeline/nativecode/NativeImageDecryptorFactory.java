@@ -8,12 +8,12 @@ public final class NativeImageDecryptorFactory {
 
   private NativeImageDecryptorFactory() {}
 
-  public static ImageDecryptorFactory getNativeImageDecryptorFactory(final int maxBitmapSize) {
+  public static ImageDecryptorFactory getNativeImageDecryptorFactory() {
     try {
       return (ImageDecryptorFactory)
               Class.forName("com.facebook.imagepipeline.nativecode.NativeJpegDecryptorFactory")
-                      .getConstructor(Integer.TYPE)
-                      .newInstance(maxBitmapSize);
+                      .getConstructor()
+                      .newInstance();
     } catch (NoSuchMethodException
             | SecurityException
             | InstantiationException

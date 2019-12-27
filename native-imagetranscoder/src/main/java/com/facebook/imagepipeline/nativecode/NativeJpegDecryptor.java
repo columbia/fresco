@@ -6,6 +6,7 @@ import com.facebook.common.internal.Preconditions;
 import com.facebook.common.internal.VisibleForTesting;
 import com.facebook.imageformat.DefaultImageFormats;
 import com.facebook.imageformat.ImageFormat;
+import com.facebook.imagepipeline.common.JpegCryptoKey;
 import com.facebook.imagepipeline.decryptor.DecryptStatus;
 import com.facebook.imagepipeline.decryptor.ImageDecryptResult;
 import com.facebook.imagepipeline.decryptor.ImageDecryptor;
@@ -23,31 +24,21 @@ public class NativeJpegDecryptor implements ImageDecryptor {
 
   public static final String TAG = "NativeJpegDecryptor";
 
-  private int mMaxBitmapSize;
-
   static {
     NativeJpegTranscoderSoLoader.ensure();
-  }
-
-  public NativeJpegDecryptor(final int maxBitmapSize) {
-    mMaxBitmapSize = maxBitmapSize;
   }
 
   @Override
   public ImageDecryptResult decrypt(
           final EncodedImage encodedImage,
           final OutputStream outputStream,
-          @Nullable ImageFormat outputFormat,
-          @Nullable Integer quality)
+          final JpegCryptoKey key)
           throws IOException {
-    if (quality == null) {
-      //quality = DEFAULT_JPEG_QUALITY;
-    }
 
     InputStream is = null;
     try {
       is = encodedImage.getInputStream();
-      decryptJpeg(is, outputStream);
+      decryptJpeg(is, outputStream, key);
     } finally {
       Closeables.closeQuietly(is);
     }
@@ -73,17 +64,22 @@ public class NativeJpegDecryptor implements ImageDecryptor {
   @VisibleForTesting
   public static void decryptJpeg(
           final InputStream inputStream,
-          final OutputStream outputStream)
+          final OutputStream outputStream,
+          final JpegCryptoKey key)
           throws IOException {
     NativeJpegTranscoderSoLoader.ensure();
     nativeDecryptJpeg(
             Preconditions.checkNotNull(inputStream),
-            Preconditions.checkNotNull(outputStream));
+            Preconditions.checkNotNull(outputStream),
+            key.getX0(),
+            key.getMu());
   }
 
   @DoNotStrip
   private static native void nativeDecryptJpeg(
           InputStream inputStream,
-          OutputStream outputStream)
+          OutputStream outputStream,
+          String x0,
+          String mu)
           throws IOException;
 }
