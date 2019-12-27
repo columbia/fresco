@@ -11,7 +11,7 @@ import javax.annotation.Nullable;
 public class NativeJpegEncryptorFactory implements ImageEncryptorFactory {
 
   @DoNotStrip
-  public NativeJpegEncryptorFactory(final int maxBitmapSize) {
+  public NativeJpegEncryptorFactory() {
 
   }
 

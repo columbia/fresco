@@ -432,8 +432,7 @@ public class ImagePipelineFactory {
 
   private ImageEncryptorFactory getImageEncryptorFactory() {
     if (mImageEncryptorFactory == null) {
-      mImageEncryptorFactory = NativeImageEncryptorFactory
-              .getNativeImageEncryptorFactory(mConfig.getExperiments().getMaxBitmapSize());
+      mImageEncryptorFactory = NativeImageEncryptorFactory.getNativeImageEncryptorFactory();
     }
     return mImageEncryptorFactory;
   }

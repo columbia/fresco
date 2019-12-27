@@ -24,7 +24,6 @@ import java.util.concurrent.Executor;
 import javax.annotation.Nullable;
 
 import static com.facebook.imageformat.DefaultImageFormats.JPEG;
-import static com.facebook.imagepipeline.transcoder.JpegTranscoderUtils.DEFAULT_JPEG_QUALITY;
 
 public class EncryptProducer implements Producer<EncodedImage> {
   private static final String PRODUCER_NAME = "EncryptProducer";

@@ -129,8 +129,7 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
     DataSource<CloseableReference<PooledByteBuffer>> dataSource = pipeline
             .fetchEncodedImage(imageRequest, this);
 
-    final ImageEncryptorFactory factory = NativeImageEncryptorFactory
-            .getNativeImageEncryptorFactory(pipeline.getConfig().getExperiments().getMaxBitmapSize());
+    final ImageEncryptorFactory factory = NativeImageEncryptorFactory.getNativeImageEncryptorFactory();
 
     dataSourceToDisk(dataSource, mDraweeEncryptView, factory, null);
   }
