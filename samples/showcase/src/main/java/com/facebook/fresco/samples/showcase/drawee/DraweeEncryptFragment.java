@@ -96,6 +96,8 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
                       @Override
                       public void onClick(View v) {
                         mUri = sampleUris().createSampleUri();
+                        //mUri = Uri.parse("");
+                        setNewKey();
                         setEncryptOptions();
                       }
                     });
@@ -202,11 +204,11 @@ public class DraweeEncryptFragment extends BaseShowcaseFragment {
 
                       if (encryptorFactory != null) {
                         final ImageEncryptor encryptor = encryptorFactory.createImageEncryptor(encodedImage.getImageFormat());
-                        encryptor.encrypt(encodedImage, fileOutputStream, JpegCryptoKey.getTestKey());
+                        encryptor.encrypt(encodedImage, fileOutputStream, lastKey);
                         FLog.d(TAG, "Wrote %s encrypted to %s (size: %s bytes)", mUri, tempFile.getAbsolutePath(), tempFile.length() / 8);
                       } else if (decryptorFactory != null) {
                         final ImageDecryptor decryptor = decryptorFactory.createImageDecryptor(encodedImage.getImageFormat());
-                        decryptor.decrypt(encodedImage, fileOutputStream, JpegCryptoKey.getTestKey());
+                        decryptor.decrypt(encodedImage, fileOutputStream, lastKey);
                         FLog.d(TAG, "Wrote %s decrypted to %s (size: %s bytes)", mUri, tempFile.getAbsolutePath(), tempFile.length() / 8);
                       }
 
