@@ -190,6 +190,95 @@ end_loop:
   }
 }
 
+static void decryptDCsACsMCUs(
+    j_decompress_ptr dinfo,
+    jvirt_barray_ptr* src_coefs,
+    mpf_t x_0,
+    mpf_t mu) {
+
+  // Iterate over every DCT coefficient in the image, for every color component
+  for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
+    jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
+    struct chaos_dc *chaotic_seq;
+    unsigned int width = comp_info->width_in_blocks;
+    unsigned int height = comp_info->height_in_blocks;
+    unsigned int n_blocks = width * height;
+    struct chaos_pos_jcoefptr *chaos_op;
+    int block_i = 0;
+
+    chaotic_seq = (struct chaos_dc *) malloc(n_blocks * sizeof(struct chaos_dc));
+    if (chaotic_seq == NULL) {
+      LOGE("decryptDCsACsMCUs failed to alloc memory for chaotic_seq");
+      return;
+    }
+
+    gen_chaotic_sequence(chaotic_seq, n_blocks, x_0, mu);
+
+    LOGD("decryptDCsACsMCUs iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
+
+    chaos_op = (struct chaos_pos_jcoefptr *) malloc(n_blocks * sizeof(struct chaos_pos_jcoefptr));
+    if (chaos_op == NULL) {
+      LOGE("decryptDCsACsMCUs failed to alloc memory for chaos_op");
+      goto end_loop;
+    }
+
+    for (int y = 0; y < height; y++) {
+      JBLOCKARRAY mcu_buff;
+
+      mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
+
+      for (int x = 0; x < width; x++) {
+        JCOEFPTR dct_block = mcu_buff[0][x];
+        JCOEFPTR dct_copy = (JCOEFPTR) malloc(DCTSIZE2 * sizeof(JCOEF));
+        if (dct_copy == NULL) {
+          LOGE("decryptDCsACsMCUs failed to alloc memory for dct_copy");
+          goto end_loop;
+        }
+
+        std::copy(dct_block, dct_block + DCTSIZE2, dct_copy);
+
+        chaos_op[block_i].dcts = dct_copy;
+        chaos_op[block_i].chaos_pos = chaotic_seq[block_i].chaos_pos;
+
+        block_i++;
+      }
+    }
+
+    block_i = 0;
+
+    for (int y = 0; y < height; y++) {
+      JBLOCKARRAY mcu_buff;
+
+      mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
+
+      for (int x = 0; x < width; x++) {
+        unsigned int dest_pos = chaos_op[block_i].chaos_pos;
+        JCOEFPTR dct_block = mcu_buff[0][x];
+
+        std::copy(chaos_op[dest_pos].dcts, chaos_op[dest_pos].dcts + DCTSIZE2, dct_block);
+        block_i++;
+      }
+      LOGD("decryptDCsACsMCUs finished swap for component %d", comp_i);
+    }
+
+end_loop:
+    if (chaos_op != NULL) {
+      for (int i = 0; i < n_blocks; i++) {
+        if (chaos_op[i].dcts != NULL)
+          free(chaos_op[i].dcts);
+      }
+
+      free(chaos_op);
+    }
+
+    for (int i; i < n_blocks; i++) {
+      mpf_clear(chaotic_seq[i].chaos_gmp);
+    }
+
+    free(chaotic_seq);
+  }
+}
+
 void decryptJpeg(
     JNIEnv *env,
     jobject is,
@@ -236,8 +325,9 @@ void decryptJpeg(
     goto teardown;
   }
 
-  decryptByColumn(&dinfo, src_coefs, x_0, mu);
-  decryptByRow(&dinfo, src_coefs, x_0, mu);
+  decryptDCsACsMCUs(&dinfo, src_coefs, x_0, mu);
+  //decryptByColumn(&dinfo, src_coefs, x_0, mu);
+  //decryptByRow(&dinfo, src_coefs, x_0, mu);
 
   jpeg_write_coefficients(&cinfo, src_coefs);
 

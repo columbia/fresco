@@ -522,7 +522,7 @@ static void permuteMCUs(
   }
 }
 
-void encryptDCsACsMCUs(
+static void encryptDCsACsMCUs(
     JNIEnv *env,
     jobject is,
     jobject os,
