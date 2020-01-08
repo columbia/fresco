@@ -438,6 +438,91 @@ teardown:
 /////////////////////////////////////////////////////
 /////////////////////////////////////////////////////
 
+struct mcu_sign {
+  short sign; // 0 = negative, 1 = non-negative
+};
+
+static void permuteSameSignDCGroup(
+    j_decompress_ptr dinfo,
+    jvirt_barray_ptr* src_coefs,
+    unsigned int width,
+    unsigned int height,
+    int comp_i,
+    unsigned int start,
+    unsigned int end,
+    mpf_t x_0,
+    mpf_t mu) {
+  bool *sorted_dcs;
+  struct chaos_dc *chaotic_seq;
+  unsigned int n_blocks = end - start + 1;
+  unsigned int k, curr_block;
+
+  sorted_dcs = (bool *) malloc(n_blocks * sizeof(bool));
+  if (sorted_dcs == NULL) {
+    LOGE("permuteSameSignDCGroup failed to alloc memory for sorted_dcs");
+    return;
+  }
+  chaotic_seq = (struct chaos_dc *) malloc(n_blocks * sizeof(struct chaos_dc));
+  if (chaotic_seq == NULL) {
+    LOGE("permuteSameSignDCGroup failed to alloc memory for chaotic_seq");
+    return;
+  }
+  gen_chaotic_sequence(chaotic_seq, n_blocks, x_0, mu);
+
+  k = 0;
+  curr_block = k;
+  std::fill(sorted_dcs, sorted_dcs + n_blocks, false);
+  while (k < n_blocks) {
+    if (sorted_dcs[k]) {
+      k += 1;
+      curr_block = k;
+      continue;
+    } else {
+      JBLOCKARRAY mcu_src_rows;
+      JBLOCKARRAY mcu_dst_rows;
+      int src_row_idx = 0;
+      int dst_row_idx = 0;
+      int src_mcu_idx = 0;
+      int dst_mcu_idx = 0;
+
+      // figure out where block k is in the image in the context of the 2D image array
+      src_row_idx = (k + start) / width;
+      src_mcu_idx = (k + start) - src_row_idx * width;
+
+      // look up where curr_block should go in the context of the 2D image array
+      dst_row_idx = (chaotic_seq[curr_block].chaos_pos + start) / width;
+      dst_mcu_idx = (chaotic_seq[curr_block].chaos_pos + start) - dst_row_idx * width;
+
+      if (chaotic_seq[curr_block].chaos_pos != k) {
+        mcu_src_rows = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], src_row_idx, (JDIMENSION) 1, TRUE);
+        mcu_dst_rows = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], dst_row_idx, (JDIMENSION) 1, TRUE);
+
+        // mcu_rows[y][x][c]
+        // - the yth vertical block
+        // - the xth horizontal block
+        // - the cth coefficient
+        std::swap(mcu_src_rows[0][src_mcu_idx][0], mcu_dst_rows[0][dst_mcu_idx][0]);
+
+        sorted_dcs[chaotic_seq[curr_block].chaos_pos] = true;
+        curr_block = chaotic_seq[curr_block].chaos_pos;
+      } else {
+        sorted_dcs[k] = true;
+        k += 1;
+        curr_block = k;
+      }
+    }
+  }
+
+  LOGD("permuteSameSignDCGroup finished: start=%d, end=%d", start, end);
+
+  for (int i; i < n_blocks; i++) {
+    mpf_clear(chaotic_seq[i].chaos_gmp);
+  }
+
+  free(chaotic_seq);
+  free(sorted_dcs);
+}
+
 static void permuteDCs(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr* src_coefs,
@@ -446,79 +531,73 @@ static void permuteDCs(
 
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
     jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
-    bool *sorted_blocks;
-    struct chaos_dc *chaotic_seq;
     unsigned int width = comp_info->width_in_blocks;
     unsigned int height = comp_info->height_in_blocks;
     unsigned int n_blocks = comp_info->width_in_blocks * comp_info->height_in_blocks;
+    struct mcu_sign *dc_signs;
+    unsigned int dc_i;
     // Note: comp_info->width_in_blocks is not the same for every component
     LOGD("permuteDCs iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, height);
 
-    sorted_blocks = (bool *) malloc(n_blocks * sizeof(bool));
-    if (sorted_blocks == NULL) {
-      LOGE("permuteDCs failed to alloc memory for sorted_blocks");
+    dc_signs = (struct mcu_sign *) malloc(n_blocks * sizeof(struct mcu_sign));
+    if (dc_signs == NULL) {
+      LOGE("permuteDCs failed to alloc memory for dc_signs");
       return;
     }
-    chaotic_seq = (struct chaos_dc *) malloc(n_blocks * sizeof(struct chaos_dc));
-    if (chaotic_seq == NULL) {
-      LOGE("permuteDCs failed to alloc memory for chaotic_seq");
-      return;
-    }
-    gen_chaotic_sequence(chaotic_seq, n_blocks, x_0, mu);
 
-    int k, curr_block;
-    k = 0;
-    curr_block = k;
-    std::fill(sorted_blocks, sorted_blocks + n_blocks, false);
-    while (k < n_blocks) {
-      if (sorted_blocks[k]) {
-        k += 1;
-        curr_block = k;
-        continue;
-      } else {
-        JBLOCKARRAY mcu_src_rows;
-        JBLOCKARRAY mcu_dst_rows;
-        int src_row_idx = 0;
-        int dst_row_idx = 0;
-        int src_mcu_idx = 0;
-        int dst_mcu_idx = 0;
+    dc_i = 0;
 
-        // figure out where block k is in the image in the context of the 2D image array
-        src_row_idx = k / width;
-        src_mcu_idx = k - src_row_idx * width;
+    for (int y = 0; y < height; y++) {
+      JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
 
-        // look up where curr_block should go in the context of the 2D image array
-        dst_row_idx = chaotic_seq[curr_block].chaos_pos / width;
-        dst_mcu_idx = chaotic_seq[curr_block].chaos_pos - dst_row_idx * width;
+      mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr)dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
 
-        //LOGD("permuteMCUs src_row_idx=%d, src_mcu_idx=%d, dst_row_idx=%d, dst_mcu_idx=%d", src_row_idx, src_mcu_idx, dst_row_idx, dst_mcu_idx);
+      for (int x = 0; x < width; x++) {
+        JCOEF dc = mcu_buff[0][x][0];
 
-        if (chaotic_seq[curr_block].chaos_pos != k) {
-          mcu_src_rows = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], src_row_idx, (JDIMENSION) 1, TRUE);
-          mcu_dst_rows = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], dst_row_idx, (JDIMENSION) 1, TRUE);
+        if (dc < 0)
+          dc_signs[dc_i].sign = 0;
+        else
+          dc_signs[dc_i].sign = 1;
 
-          // mcu_rows[y][x][c]
-          // - the yth vertical block
-          // - the xth horizontal block
-          // - the cth coefficient
-          std::swap(mcu_src_rows[0][src_mcu_idx][0], mcu_dst_rows[0][dst_mcu_idx][0]);
 
-          sorted_blocks[chaotic_seq[curr_block].chaos_pos] = true;
-          curr_block = chaotic_seq[curr_block].chaos_pos;
-        } else {
-          sorted_blocks[k] = true;
-          k += 1;
-          curr_block = k;
-        }
+        dc_i++;
       }
     }
 
-    for (int i; i < n_blocks; i++) {
-      mpf_clear(chaotic_seq[i].chaos_gmp);
-    }
+    dc_i = 0;
+    unsigned int same_start = 0;
+    unsigned int same_end = 0;
+    short curr_sign = -1;
 
-    free(chaotic_seq);
-    free(sorted_blocks);
+    while (dc_i < n_blocks) {
+      // If first iteration, set curr_sign and keep moving
+      if (curr_sign == -1) {
+        curr_sign = dc_signs[dc_i].sign;
+        dc_i++;
+        continue;
+      }
+
+      // DC coef is within current window, move the end of the window forward
+      if (dc_signs[dc_i].sign == curr_sign) {
+        same_end = dc_i;
+        dc_i++;
+        continue;
+      }
+
+      // DC coef is not within the current window, permute the group then reset the window
+      permuteSameSignDCGroup(dinfo, src_coefs, width, height, comp_i, same_start, same_end, x_0, mu);
+
+      // Create new window
+      same_start = dc_i;
+      same_end = dc_i;
+      curr_sign = dc_signs[dc_i].sign;
+      dc_i++;
+    }
+    // Permute the final window which was missed in the loop
+    permuteSameSignDCGroup(dinfo, src_coefs, width, height, comp_i, same_start, same_end, x_0, mu);
+
+    free(dc_signs);
   }
 }
 
@@ -578,17 +657,29 @@ static void permuteMCUs(
         //LOGD("permuteMCUs src_row_idx=%d, src_mcu_idx=%d, dst_row_idx=%d, dst_mcu_idx=%d", src_row_idx, src_mcu_idx, dst_row_idx, dst_mcu_idx);
 
         if (chaotic_seq[curr_block].chaos_pos != k) {
+          JCOEF *temp;
           mcu_src_rows = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], src_row_idx, (JDIMENSION) 1, TRUE);
           mcu_dst_rows = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], dst_row_idx, (JDIMENSION) 1, TRUE);
+
+          temp = (JCOEF *) malloc((DCTSIZE2 - 1) * sizeof(JCOEF));
+          if (temp == NULL) {
+           LOGE("permuteMCUs failed to alloc memory for JCOEF temp");
+           return;
+          }
 
           // mcu_rows[y][x][c]
           // - the yth vertical block
           // - the xth horizontal block
           // - the cth coefficient
-          std::swap(mcu_src_rows[0][src_mcu_idx], mcu_dst_rows[0][dst_mcu_idx]);
+          //std::swap(mcu_src_rows[0][src_mcu_idx], mcu_dst_rows[0][dst_mcu_idx]);
+          std::copy_n(&mcu_src_rows[0][src_mcu_idx][1], DCTSIZE2 - 1, temp);
+          std::copy_n(mcu_dst_rows[0][dst_mcu_idx], DCTSIZE2 - 1, &mcu_src_rows[0][src_mcu_idx][1]);
+          std::copy_n(temp, DCTSIZE2 - 1, &mcu_dst_rows[0][dst_mcu_idx][1]);
 
           sorted_blocks[chaotic_seq[curr_block].chaos_pos] = true;
           curr_block = chaotic_seq[curr_block].chaos_pos;
+
+          free(temp);
         } else {
           sorted_blocks[k] = true;
           k += 1;
@@ -662,7 +753,7 @@ static void encryptDCsACsMCUs(
 
   jpeg_write_coefficients(&cinfo, src_coefs);
 
-  LOGD("encryptJpegByRowAndColumn finished");
+  LOGD("encryptDCsACsMCUs finished");
 
 teardown:
   env->ReleaseStringUTFChars(x_0_jstr, x_0_char);
