@@ -676,6 +676,19 @@ static void permuteDCsSimple(
       }
     }
 
+    curr_block = 0;
+    for (int y = 0; y < height; y++) {
+      JBLOCKARRAY mcu_buff;
+
+      mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
+
+      for (int x = 0; x < width; x++) {
+        if (chaotic_seq[curr_block].flip_sign)
+          mcu_buff[0][x][0] *= -1;
+        curr_block++;
+      }
+    }
+
     for (int i; i < n_blocks; i++) {
       mpf_clear(chaotic_seq[i].chaos_gmp);
     }

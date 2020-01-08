@@ -17,6 +17,7 @@ struct chaos_dc {
   float chaos;
   unsigned int chaos_pos;
   mpf_t chaos_gmp;
+  bool flip_sign;
 
   JCOEF dc;
   unsigned int block_pos;

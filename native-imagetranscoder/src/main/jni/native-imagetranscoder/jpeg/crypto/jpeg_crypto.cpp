@@ -10,6 +10,7 @@ extern "C" {
   #include "transupp.h"
 }
 #include <gmp.h>
+#include <bitset>
 
 #include "decoded_image.h"
 #include "exceptions_handler.h"
@@ -19,6 +20,7 @@ extern "C" {
 #include "jpeg/jpeg_stream_wrappers.h"
 #include "jpeg/jpeg_codec.h"
 #include "jpeg_crypto.h"
+#include "sha512.h"
 
 namespace facebook {
 namespace imagepipeline {
@@ -87,18 +89,74 @@ static void next_logistic_map_val(mpf_t output, mpf_t x_n, mpf_t mu) {
   mpf_clears(subtraction_part, multiplication_part, NULL);
 }
 
+static bool should_flip_sign(mpf_t chaos_gmp) {
+  mp_exp_t exponent;
+  char *mpf_val;
+  std::string chaos_hash_str;
+  int set_bit_count = 0;
+
+  mpf_val = mpf_get_str(NULL, &exponent, 10, 500, chaos_gmp);
+  chaos_hash_str = sw::sha512::calculate(mpf_val);
+
+  for (int i = 0; i < 32; i++) {
+    set_bit_count += std::bitset<8>(chaos_hash_str[i]).count();
+  }
+
+  free(mpf_val);
+
+  return set_bit_count % 2;
+}
+
+static void generate_sign_flips(mpf_t x_0, mpf_t mu, bool *sign_flips, int n) {
+  mp_exp_t exponent;
+  char *mpf_val_x_0;
+  char *mpf_val_mu;
+  std::string concat_hashes;
+  int char_count = 0;
+
+  mpf_val_x_0 = mpf_get_str(NULL, &exponent, 10, 500, x_0);
+  mpf_val_mu = mpf_get_str(NULL, &exponent, 10, 500, mu);
+  concat_hashes.append(sw::sha512::calculate(mpf_val_x_0));
+  concat_hashes.append(sw::sha512::calculate(mpf_val_mu));
+  char_count = concat_hashes.size();
+
+  free(mpf_val_x_0);
+  free(mpf_val_mu);
+
+  // 8 bits per character, if there are N MCUs, then we only need ceil(N / 8) characters
+  while (char_count < (n / 8) + 1) {
+    concat_hashes.append(sw::sha512::calculate(concat_hashes));
+    char_count += concat_hashes.size();
+  }
+
+  for (int i = 0; i < n; i++) {
+    //sign_flips[i] = std::bitset<8>(concat_hashes[i]).count() % 2;
+    sign_flips[i] = i % 2;
+  }
+}
+
 void gen_chaotic_sequence(
     struct chaos_dc *chaotic_seq,
     int n,
     mpf_t x_0,
     mpf_t mu) {
 
+  bool *sign_flips;
+
+  sign_flips = (bool *) malloc(n * sizeof(bool));
+  if (sign_flips == NULL) {
+    LOGE("gen_chaotic_sequence failed to allocate sign_flips");
+    return;
+  }
+  generate_sign_flips(x_0, mu, sign_flips, n);
+
   mpf_init(chaotic_seq[0].chaos_gmp);
 
   // chaotic_seq[0].chaos_gmp = mu * x_0 * (1 - x_0);
   next_logistic_map_val(chaotic_seq[0].chaos_gmp, x_0, mu);
-
   chaotic_seq[0].chaos_pos = 0;
+
+  chaotic_seq[0].flip_sign = sign_flips[0];
 
   for (int i = 1; i < n; i++) {
     // x_n = chaotic_seq[i - 1].chaos_gmp
@@ -106,11 +164,14 @@ void gen_chaotic_sequence(
     next_logistic_map_val(chaotic_seq[i].chaos_gmp, chaotic_seq[i - 1].chaos_gmp, mu);
 
     chaotic_seq[i].chaos_pos = i;
+
+    chaotic_seq[i].flip_sign = sign_flips[i];
   }
 
   // Order the sequence in ascending order based on the chaotic value
   // Each value's original position is maintained via the chaotic_pos member
   std::sort(chaotic_seq, chaotic_seq + n, &chaos_gmp_sorter);
+  free(sign_flips);
 }
 
 static void populate_row(struct chaos_dc *chaotic_seq_row, int y, int width, float prev_row_last_val, float mu) {

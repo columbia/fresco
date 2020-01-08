@@ -247,6 +247,10 @@ static void decryptDCs(
       for (int x = 0; x < width; x++) {
         unsigned int dest_pos = chaos_op[block_i].chaos_pos;
         mcu_buff[0][x][0] = chaos_op[dest_pos].dc;
+
+        if (chaotic_seq[dest_pos].flip_sign)
+          mcu_buff[0][x][0] *= -1;
+
         block_i++;
       }
       LOGD("decryptDCs finished swap for component %d", comp_i);
