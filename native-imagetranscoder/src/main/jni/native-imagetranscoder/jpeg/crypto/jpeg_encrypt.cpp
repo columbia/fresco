@@ -438,7 +438,7 @@ teardown:
 /////////////////////////////////////////////////////
 /////////////////////////////////////////////////////
 
-static void permuteMCUs(
+static void permuteDCs(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr* src_coefs,
     mpf_t x_0,
@@ -451,6 +451,90 @@ static void permuteMCUs(
     unsigned int width = comp_info->width_in_blocks;
     unsigned int height = comp_info->height_in_blocks;
     unsigned int n_blocks = comp_info->width_in_blocks * comp_info->height_in_blocks;
+    // Note: comp_info->width_in_blocks is not the same for every component
+    LOGD("permuteDCs iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, height);
+
+    sorted_blocks = (bool *) malloc(n_blocks * sizeof(bool));
+    if (sorted_blocks == NULL) {
+      LOGE("permuteDCs failed to alloc memory for sorted_blocks");
+      return;
+    }
+    chaotic_seq = (struct chaos_dc *) malloc(n_blocks * sizeof(struct chaos_dc));
+    if (chaotic_seq == NULL) {
+      LOGE("permuteDCs failed to alloc memory for chaotic_seq");
+      return;
+    }
+    gen_chaotic_sequence(chaotic_seq, n_blocks, x_0, mu);
+
+    int k, curr_block;
+    k = 0;
+    curr_block = k;
+    std::fill(sorted_blocks, sorted_blocks + n_blocks, false);
+    while (k < n_blocks) {
+      if (sorted_blocks[k]) {
+        k += 1;
+        curr_block = k;
+        continue;
+      } else {
+        JBLOCKARRAY mcu_src_rows;
+        JBLOCKARRAY mcu_dst_rows;
+        int src_row_idx = 0;
+        int dst_row_idx = 0;
+        int src_mcu_idx = 0;
+        int dst_mcu_idx = 0;
+
+        // figure out where block k is in the image in the context of the 2D image array
+        src_row_idx = k / width;
+        src_mcu_idx = k - src_row_idx * width;
+
+        // look up where curr_block should go in the context of the 2D image array
+        dst_row_idx = chaotic_seq[curr_block].chaos_pos / width;
+        dst_mcu_idx = chaotic_seq[curr_block].chaos_pos - dst_row_idx * width;
+
+        //LOGD("permuteMCUs src_row_idx=%d, src_mcu_idx=%d, dst_row_idx=%d, dst_mcu_idx=%d", src_row_idx, src_mcu_idx, dst_row_idx, dst_mcu_idx);
+
+        if (chaotic_seq[curr_block].chaos_pos != k) {
+          mcu_src_rows = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], src_row_idx, (JDIMENSION) 1, TRUE);
+          mcu_dst_rows = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], dst_row_idx, (JDIMENSION) 1, TRUE);
+
+          // mcu_rows[y][x][c]
+          // - the yth vertical block
+          // - the xth horizontal block
+          // - the cth coefficient
+          std::swap(mcu_src_rows[0][src_mcu_idx][0], mcu_dst_rows[0][dst_mcu_idx][0]);
+
+          sorted_blocks[chaotic_seq[curr_block].chaos_pos] = true;
+          curr_block = chaotic_seq[curr_block].chaos_pos;
+        } else {
+          sorted_blocks[k] = true;
+          k += 1;
+          curr_block = k;
+        }
+      }
+    }
+
+    for (int i; i < n_blocks; i++) {
+      mpf_clear(chaotic_seq[i].chaos_gmp);
+    }
+
+    free(chaotic_seq);
+    free(sorted_blocks);
+  }
+}
+
+static void permuteMCUs(
+    j_decompress_ptr dinfo,
+    jvirt_barray_ptr* src_coefs,
+    mpf_t x_0,
+    mpf_t mu) {
+
+  for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
+    jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
+    bool *sorted_blocks;
+    struct chaos_dc *chaotic_seq;
+    unsigned int width = comp_info->width_in_blocks;
+    unsigned int height = comp_info->height_in_blocks;
+    unsigned int n_blocks = width * height;
     // Note: comp_info->width_in_blocks is not the same for every component
     LOGD("permuteMCUs iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, height);
 
@@ -570,6 +654,7 @@ static void encryptDCsACsMCUs(
 
   LOGD("encryptDCsACsMCUs allocated mpf_t x_0 and mu");
 
+  permuteDCs(&dinfo, src_coefs, x_0, mu);
   permuteMCUs(&dinfo, src_coefs, x_0, mu);
 
   //encryptByRow(&dinfo, src_coefs, x_0, mu);
