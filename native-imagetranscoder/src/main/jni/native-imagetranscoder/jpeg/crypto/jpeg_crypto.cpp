@@ -123,8 +123,12 @@ static void generate_sign_flips(mpf_t x_0, mpf_t mu, bool *sign_flips, int n) {
   free(mpf_val_x_0);
   free(mpf_val_mu);
 
+  while (concat_hashes.size() < n) {
+    concat_hashes.append(sw::sha512::calculate(concat_hashes));
+  }
+
   for (int i = 0; i < n; i++) {
-    sign_flips[i] = std::bitset<8>(concat_hashes[i % concat_hashes.size()]).count() % 2;
+    sign_flips[i] = std::bitset<8>(concat_hashes[i]).count() % 2;
   }
 }
 
