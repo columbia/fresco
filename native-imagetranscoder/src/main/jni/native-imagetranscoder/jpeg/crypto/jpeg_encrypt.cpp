@@ -433,13 +433,159 @@ teardown:
   jpeg_destroy_decompress(&dinfo);
 }
 
+/////////////////////////////////////////////////////
+/////////////////////////////////////////////////////
+/////////////////////////////////////////////////////
+/////////////////////////////////////////////////////
+
+static void permuteMCUs(
+    j_decompress_ptr dinfo,
+    jvirt_barray_ptr* src_coefs,
+    mpf_t x_0,
+    mpf_t mu) {
+
+  for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
+    jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
+    bool *sorted_blocks;
+    struct chaos_dc *chaotic_seq;
+    unsigned int width = comp_info->width_in_blocks;
+    unsigned int height = comp_info->height_in_blocks;
+    unsigned int n_blocks = comp_info->width_in_blocks * comp_info->height_in_blocks;
+    // Note: comp_info->width_in_blocks is not the same for every component
+    LOGD("permuteMCUs iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, height);
+
+    sorted_blocks = (bool *) malloc(n_blocks * sizeof(bool));
+    if (sorted_blocks == NULL) {
+      LOGE("permuteMCUs failed to alloc memory for sorted_blocks");
+      return;
+    }
+    chaotic_seq = (struct chaos_dc *) malloc(n_blocks * sizeof(struct chaos_dc));
+    if (chaotic_seq == NULL) {
+      LOGE("permuteMCUs failed to alloc memory for chaotic_seq");
+      return;
+    }
+    gen_chaotic_sequence(chaotic_seq, n_blocks, x_0, mu);
+
+    ////
+
+    //LOGD("permuteMCUs before access_virt_barray");
+    //LOGD("permuteMCUs after access_virt_barray");
+
+    for (int i = 0; i < n_blocks; i++) {
+      JBLOCKARRAY mcu_src_rows;
+      JBLOCKARRAY mcu_dst_rows;
+      int src_row_idx = 0;
+      int dst_row_idx = 0;
+      int src_mcu_idx = 0;
+      int dst_mcu_idx = 0;
+
+
+      src_row_idx = i / width;
+      src_mcu_idx = i - src_row_idx * width;
+
+      dst_row_idx = chaotic_seq[i].chaos_pos / width;
+      dst_mcu_idx = chaotic_seq[i].chaos_pos - dst_row_idx * width;
+
+      LOGD("permuteMCUs src_row_idx=%d, src_mcu_idx=%d, dst_row_idx=%d, dst_mcu_idx=%d", src_row_idx, src_mcu_idx, dst_row_idx, dst_mcu_idx);
+
+      LOGD("permuteMCUs before access_virt_barray");
+      mcu_src_rows = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], src_row_idx, (JDIMENSION) 1, TRUE);
+      mcu_dst_rows = (dinfo->mem->access_virt_barray)((j_common_ptr) dinfo, src_coefs[comp_i], dst_row_idx, (JDIMENSION) 1, TRUE);
+      LOGD("permuteMCUs after access_virt_barray");
+
+      // mcu_rows[y][x][c]
+      // - the yth vertical block
+      // - the xth horizontal block
+      // - the cth coefficient
+      std::swap(mcu_src_rows[0][src_mcu_idx], mcu_dst_rows[0][dst_mcu_idx]);
+    }
+
+    ////
+
+    for (int i; i < n_blocks; i++) {
+      mpf_clear(chaotic_seq[i].chaos_gmp);
+    }
+
+    free(chaotic_seq);
+    free(sorted_blocks);
+  }
+}
+
+void encryptDCsACsMCUs(
+    JNIEnv *env,
+    jobject is,
+    jobject os,
+    jstring x_0_jstr,
+    jstring mu_jstr) {
+  JpegInputStreamWrapper is_wrapper{env, is};
+  JpegOutputStreamWrapper os_wrapper{env, os};
+  JpegErrorHandler error_handler{env};
+  struct jpeg_source_mgr& source = is_wrapper.public_fields;
+  struct jpeg_destination_mgr& destination = os_wrapper.public_fields;
+  mpf_t x_0;
+  mpf_t mu;
+  jsize x_0_len = env->GetStringUTFLength(x_0_jstr);
+  jsize mu_len = env->GetStringUTFLength(mu_jstr);
+  const char *x_0_char = env->GetStringUTFChars(x_0_jstr, (jboolean *) 0);
+  const char *mu_char = env->GetStringUTFChars(mu_jstr, (jboolean *) 0);
+
+  if (setjmp(error_handler.setjmpBuffer)) {
+    return;
+  }
+
+  // prepare decompress struct
+  struct jpeg_decompress_struct dinfo;
+  initDecompressStruct(dinfo, error_handler, source);
+
+  // create compress struct
+  struct jpeg_compress_struct cinfo;
+  initCompressStruct(cinfo, dinfo, error_handler, destination);
+
+  // get DCT coefficients, 64 for 8x8 DCT blocks (first is DC, remaining 63 are AC?)
+  jvirt_barray_ptr *src_coefs = jpeg_read_coefficients(&dinfo);
+
+  // initialize with default params, then copy the ones needed for lossless transcoding
+  jpeg_copy_critical_parameters(&dinfo, &cinfo);
+  jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
+
+  if (mpf_init_set_str(x_0, x_0_char, 10)) {
+    LOGD("encryptDCsACsMCUs failed to mpf_set_str(x_0)");
+    goto teardown;
+  }
+  if (mpf_init_set_str(mu, mu_char, 10)) {
+    LOGD("encryptDCsACsMCUs failed to mpf_set_str(mu)");
+    goto teardown;
+  }
+
+  LOGD("encryptDCsACsMCUs allocated mpf_t x_0 and mu");
+
+  permuteMCUs(&dinfo, src_coefs, x_0, mu);
+
+  //encryptByRow(&dinfo, src_coefs, x_0, mu);
+  //encryptByColumn(&dinfo, src_coefs, x_0, mu);
+
+  jpeg_write_coefficients(&cinfo, src_coefs);
+
+  LOGD("encryptJpegByRowAndColumn finished");
+
+teardown:
+  env->ReleaseStringUTFChars(x_0_jstr, x_0_char);
+  env->ReleaseStringUTFChars(mu_jstr, mu_char);
+  mpf_clears(x_0, mu, NULL);
+  jpeg_finish_compress(&cinfo);
+  jpeg_destroy_compress(&cinfo);
+  jpeg_destroy_decompress(&dinfo);
+
+}
+
 void encryptJpeg(
     JNIEnv *env,
     jobject is,
     jobject os,
     jstring x_0_jstr,
     jstring mu_jstr) {
-  encryptJpegByRowAndColumn(env, is, os, x_0_jstr, mu_jstr);
+  //encryptJpegByRowAndColumn(env, is, os, x_0_jstr, mu_jstr);
+  encryptDCsACsMCUs(env, is, os, x_0_jstr, mu_jstr);
 }
 
 } } } }
