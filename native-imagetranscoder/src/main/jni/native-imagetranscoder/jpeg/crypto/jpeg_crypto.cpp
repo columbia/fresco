@@ -123,15 +123,8 @@ static void generate_sign_flips(mpf_t x_0, mpf_t mu, bool *sign_flips, int n) {
   free(mpf_val_x_0);
   free(mpf_val_mu);
 
-  // 8 bits per character, if there are N MCUs, then we only need ceil(N / 8) characters
-  while (char_count < (n / 8) + 1) {
-    concat_hashes.append(sw::sha512::calculate(concat_hashes));
-    char_count += concat_hashes.size();
-  }
-
   for (int i = 0; i < n; i++) {
-    //sign_flips[i] = std::bitset<8>(concat_hashes[i]).count() % 2;
-    sign_flips[i] = i % 2;
+    sign_flips[i] = std::bitset<8>(concat_hashes[i % concat_hashes.size()]).count() % 2;
   }
 }
 
