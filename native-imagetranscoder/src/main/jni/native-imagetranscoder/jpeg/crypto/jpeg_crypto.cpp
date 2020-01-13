@@ -267,7 +267,10 @@ void diffuseACs(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr* src_coefs,
     mpf_t x_0,
-    mpf_t mu) {
+    mpf_t mu,
+    double alpha,
+    double beta) {
+
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
     jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
     unsigned int width = comp_info->width_in_blocks;
@@ -310,8 +313,6 @@ void diffuseACs(
           if (mcu_ptr[i] == 0)
             continue;
 
-          double alpha = 1.4929;
-          double beta = 3.9484;
           // alpha * 255 * (1 - 255) + beta * 255 * (1 - 255/1000) + 124194 * 10^10
           JCOEF xor_component = alpha * mcu_ptr[last_non_zero_idx] *
               (1 - mcu_ptr[last_non_zero_idx]) + beta * mcu_ptr[last_non_zero_idx] *

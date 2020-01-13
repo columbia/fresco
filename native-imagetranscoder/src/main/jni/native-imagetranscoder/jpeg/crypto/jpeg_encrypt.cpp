@@ -807,6 +807,8 @@ static void encryptDCsACsMCUs(
   struct jpeg_destination_mgr& destination = os_wrapper.public_fields;
   mpf_t x_0;
   mpf_t mu;
+  mpf_t alpha;
+  mpf_t beta;
   jsize x_0_len = env->GetStringUTFLength(x_0_jstr);
   jsize mu_len = env->GetStringUTFLength(mu_jstr);
   const char *x_0_char = env->GetStringUTFChars(x_0_jstr, (jboolean *) 0);
@@ -840,10 +842,19 @@ static void encryptDCsACsMCUs(
     goto teardown;
   }
 
+  if (mpf_init_set_str(alpha, x_0_char + x_0_len - 16, 10)) {
+    LOGD("encryptDCsACsMCUs failed to mpf_set_str(alpha)");
+    goto teardown;
+  }
+  if (mpf_init_set_str(beta, mu_char + mu_len - 16, 10)) {
+    LOGD("encryptDCsACsMCUs failed to mpf_set_str(beta)");
+    goto teardown;
+  }
+
   LOGD("encryptDCsACsMCUs allocated mpf_t x_0 and mu");
 
   permuteDCsSimple(&dinfo, src_coefs, x_0, mu);
-  diffuseACs(&dinfo, src_coefs, x_0, mu);
+  diffuseACs(&dinfo, src_coefs, x_0, mu, mpf_get_d(alpha), mpf_get_d(beta));
   //permuteDCs(&dinfo, src_coefs, x_0, mu);
   permuteMCUs(&dinfo, src_coefs, x_0, mu);
 

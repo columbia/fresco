@@ -64,7 +64,9 @@ void diffuseACs(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr* src_coefs,
     mpf_t x_0,
-    mpf_t mu);
+    mpf_t mu,
+    double alpha,
+    double beta);
 
 float scaleToRange(float input, float input_min, float input_max, float scale_min, float scale_max);
 
