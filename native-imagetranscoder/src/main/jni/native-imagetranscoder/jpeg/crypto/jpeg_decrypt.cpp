@@ -358,6 +358,71 @@ end_loop:
   }
 }
 
+static void decryptAllACs(
+    j_decompress_ptr dinfo,
+    jvirt_barray_ptr* src_coefs,
+    mpf_t x_0,
+    mpf_t mu) {
+
+  for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
+    jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
+    unsigned int width = comp_info->width_in_blocks;
+    unsigned int height = comp_info->height_in_blocks;
+    mpf_t last_xn;
+    struct chaos_dc *chaotic_seq;
+    unsigned int n_coefficients = DCTSIZE2 - 1;
+
+    chaotic_seq = (struct chaos_dc *) malloc(n_coefficients * sizeof(struct chaos_dc));
+    if (chaotic_seq == NULL) {
+      LOGE("permuteACs failed to alloc memory for chaotic_seq");
+      return;
+    }
+
+    mpf_init(last_xn);
+
+    LOGD("permuteACs iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
+
+    for (int y = 0; y < comp_info->height_in_blocks; y++) {
+      JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
+      JCOEF ac_coef[DCTSIZE2];
+
+      // mcu_buff[y][x][c]
+      // - the cth coefficient
+      // - the xth horizontal block
+      // - the yth vertical block
+      mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr)dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
+
+      for (int x = 0; x < comp_info->width_in_blocks; x++) {
+        JCOEFPTR mcu_ptr; // Pointer to 8x8 block of coefficients (I think)
+
+        if (y == 0 && x == 0)
+          gen_chaotic_sequence(chaotic_seq, n_coefficients, x_0, mu, false);
+        else
+          gen_chaotic_sequence(chaotic_seq, n_coefficients, last_xn, mu, false);
+
+        mpf_set(last_xn, chaotic_seq[n_coefficients - 1].chaos_gmp);
+        std::sort(chaotic_seq, chaotic_seq + n_coefficients, &chaos_gmp_sorter);
+
+        mcu_ptr = mcu_buff[0][x];
+
+        for (int i = 0; i < n_coefficients; i++) {
+          ac_coef[i] = mcu_ptr[i + 1];
+        }
+
+        for (int i = 0; i < n_coefficients; i++) {
+          mcu_ptr[i + 1] = ac_coef[chaotic_seq[i].chaos_pos];
+        }
+
+        for (int i; i < n_coefficients; i++)
+          mpf_clear(chaotic_seq[i].chaos_gmp);
+      }
+    }
+end_row:
+    free(chaotic_seq);
+    mpf_clear(last_xn);
+  }
+}
+
 void decryptJpeg(
     JNIEnv *env,
     jobject is,
@@ -416,7 +481,8 @@ void decryptJpeg(
   }
 
   decryptMCUs(&dinfo, src_coefs, x_0, mu);
-  diffuseACs(&dinfo, src_coefs, x_0, mu, scale_alpha_beta(alpha, 16), scale_alpha_beta(beta, 16));
+  decryptAllACs(&dinfo, src_coefs, x_0, mu);
+  //diffuseACs(&dinfo, src_coefs, x_0, mu, scale_alpha_beta(alpha, 16), scale_alpha_beta(beta, 16));
   decryptDCs(&dinfo, src_coefs, x_0, mu);
   //decryptByColumn(&dinfo, src_coefs, x_0, mu);
   //decryptByRow(&dinfo, src_coefs, x_0, mu);

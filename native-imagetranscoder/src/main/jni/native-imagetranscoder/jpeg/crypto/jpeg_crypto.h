@@ -27,6 +27,8 @@ bool chaos_sorter(struct chaos_dc left, struct chaos_dc right);
 
 bool chaos_pos_sorter(struct chaos_dc left, struct chaos_dc right);
 
+bool chaos_gmp_sorter(struct chaos_dc left, struct chaos_dc right);
+
 void generateChaoticSequence(
     struct chaos_dc *chaotic_seq,
     int n,
