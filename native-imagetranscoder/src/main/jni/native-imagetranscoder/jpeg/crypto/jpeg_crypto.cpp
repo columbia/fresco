@@ -274,6 +274,14 @@ void diffuseACs(
     unsigned int height = comp_info->height_in_blocks;
     unsigned int ith_mcu = 0;
     mpf_t last_xn;
+    struct chaos_dc *chaotic_seq;
+    unsigned int n_coefficients = comp_info->width_in_blocks * DCTSIZE2;
+
+    chaotic_seq = (struct chaos_dc *) malloc(n_coefficients * sizeof(struct chaos_dc));
+    if (chaotic_seq == NULL) {
+      LOGE("diffuseACs failed to alloc memory for chaotic_seq");
+      return;
+    }
 
     mpf_init(last_xn);
 
@@ -281,16 +289,6 @@ void diffuseACs(
 
     for (int y = 0; y < comp_info->height_in_blocks; y++) {
       JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
-      struct chaos_dc *chaotic_seq;
-      unsigned int n_coefficients = comp_info->width_in_blocks * DCTSIZE2;
-
-      LOGD("diffuseACs allocating chaotic_seq");
-
-      chaotic_seq = (struct chaos_dc *) malloc(n_coefficients * sizeof(struct chaos_dc));
-      if (chaotic_seq == NULL) {
-        LOGE("diffuseACs failed to alloc memory for chaotic_seq");
-        return;
-      }
 
       if (ith_mcu)
         gen_chaotic_sequence(chaotic_seq, n_coefficients, last_xn, mu, false);
@@ -329,10 +327,9 @@ void diffuseACs(
       for (int i; i < n_coefficients; i++) {
         mpf_clear(chaotic_seq[i].chaos_gmp);
       }
-
-      free(chaotic_seq);
     }
 
+    free(chaotic_seq);
     mpf_clear(last_xn);
   }
 }
