@@ -423,6 +423,85 @@ end_row:
   }
 }
 
+static void decryptNonZeroACs(
+    j_decompress_ptr dinfo,
+    jvirt_barray_ptr* src_coefs,
+    mpf_t x_0,
+    mpf_t mu) {
+
+  for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
+    jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
+    unsigned int width = comp_info->width_in_blocks;
+    unsigned int height = comp_info->height_in_blocks;
+    mpf_t last_xn;
+    struct chaos_dc *chaotic_seq;
+
+    chaotic_seq = (struct chaos_dc *) malloc(DCTSIZE2 * sizeof(struct chaos_dc));
+    if (chaotic_seq == NULL) {
+      LOGE("decryptNonZeroACs failed to alloc memory for chaotic_seq");
+      return;
+    }
+
+    mpf_init(last_xn);
+
+    LOGD("decryptNonZeroACs iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
+
+    for (int y = 0; y < comp_info->height_in_blocks; y++) {
+      JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
+
+      // mcu_buff[y][x][c]
+      // - the cth coefficient
+      // - the xth horizontal block
+      // - the yth vertical block
+      mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr)dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
+
+      for (int x = 0; x < comp_info->width_in_blocks; x++) {
+        JCOEFPTR mcu_ptr; // Pointer to 8x8 block of coefficients
+        JCOEF ac_coef[DCTSIZE2];
+        int non_zero_idx[DCTSIZE2];
+        int non_zero_count = 0;
+        int processed = 0;
+
+        mcu_ptr = mcu_buff[0][x];
+
+        for (int i = 1; i < DCTSIZE2; i++) {
+          ac_coef[i] = mcu_ptr[i];
+
+          if (mcu_ptr[i] == 0)
+            continue;
+
+          non_zero_idx[non_zero_count] = i;
+          non_zero_count++;
+        }
+
+        if (y == 0 && x == 0)
+          gen_chaotic_sequence(chaotic_seq, non_zero_count, x_0, mu, false);
+        else
+          gen_chaotic_sequence(chaotic_seq, non_zero_count, last_xn, mu, false);
+
+        mpf_set(last_xn, chaotic_seq[non_zero_count - 1].chaos_gmp);
+        std::sort(chaotic_seq, chaotic_seq + non_zero_count, &chaos_gmp_sorter);
+
+        for (int i = 1; i < DCTSIZE2; i++) {
+          if (ac_coef[i] == 0)
+            continue;
+
+          mcu_ptr[i] = ac_coef[non_zero_idx[chaotic_seq[processed].chaos_pos]];
+
+          processed++;
+        }
+
+        // Clean up
+        for (int i; i < non_zero_count; i++)
+          mpf_clear(chaotic_seq[i].chaos_gmp);
+      }
+    }
+end_row:
+    free(chaotic_seq);
+    mpf_clear(last_xn);
+  }
+}
+
 void decryptJpeg(
     JNIEnv *env,
     jobject is,
@@ -481,9 +560,13 @@ void decryptJpeg(
   }
 
   decryptMCUs(&dinfo, src_coefs, x_0, mu);
-  decryptAllACs(&dinfo, src_coefs, x_0, mu);
+
+  decryptNonZeroACs(&dinfo, src_coefs, x_0, mu);
+  //decryptAllACs(&dinfo, src_coefs, x_0, mu);
   //diffuseACs(&dinfo, src_coefs, x_0, mu, scale_alpha_beta(alpha, 16), scale_alpha_beta(beta, 16));
+
   decryptDCs(&dinfo, src_coefs, x_0, mu);
+
   //decryptByColumn(&dinfo, src_coefs, x_0, mu);
   //decryptByRow(&dinfo, src_coefs, x_0, mu);
 
