@@ -854,7 +854,7 @@ static void encryptDCsACsMCUs(
   LOGD("encryptDCsACsMCUs allocated mpf_t x_0 and mu");
 
   permuteDCsSimple(&dinfo, src_coefs, x_0, mu);
-  diffuseACs(&dinfo, src_coefs, x_0, mu, mpf_get_d(alpha), mpf_get_d(beta));
+  diffuseACs(&dinfo, src_coefs, x_0, mu, scale_alpha_beta(alpha, 16), scale_alpha_beta(beta, 16));
   //permuteDCs(&dinfo, src_coefs, x_0, mu);
   permuteMCUs(&dinfo, src_coefs, x_0, mu);
 
@@ -868,7 +868,7 @@ static void encryptDCsACsMCUs(
 teardown:
   env->ReleaseStringUTFChars(x_0_jstr, x_0_char);
   env->ReleaseStringUTFChars(mu_jstr, mu_char);
-  mpf_clears(x_0, mu, NULL);
+  mpf_clears(x_0, mu, alpha, beta, NULL);
   jpeg_finish_compress(&cinfo);
   jpeg_destroy_compress(&cinfo);
   jpeg_destroy_decompress(&dinfo);

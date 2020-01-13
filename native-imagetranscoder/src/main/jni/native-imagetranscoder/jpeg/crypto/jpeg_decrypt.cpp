@@ -416,7 +416,7 @@ void decryptJpeg(
   }
 
   decryptMCUs(&dinfo, src_coefs, x_0, mu);
-  diffuseACs(&dinfo, src_coefs, x_0, mu, mpf_get_d(alpha), mpf_get_d(beta));
+  diffuseACs(&dinfo, src_coefs, x_0, mu, scale_alpha_beta(alpha, 16), scale_alpha_beta(beta, 16));
   decryptDCs(&dinfo, src_coefs, x_0, mu);
   //decryptByColumn(&dinfo, src_coefs, x_0, mu);
   //decryptByRow(&dinfo, src_coefs, x_0, mu);
@@ -428,6 +428,7 @@ void decryptJpeg(
 teardown:
   env->ReleaseStringUTFChars(x_0_jstr, x_0_char);
   env->ReleaseStringUTFChars(mu_jstr, mu_char);
+  mpf_clears(x_0, mu, alpha, beta, NULL);
   jpeg_finish_compress(&cinfo);
   jpeg_destroy_compress(&cinfo);
   jpeg_destroy_decompress(&dinfo);

@@ -69,6 +69,7 @@ void diffuseACs(
     double beta);
 
 float scaleToRange(float input, float input_min, float input_max, float scale_min, float scale_max);
+double scale_alpha_beta(mpf_t input, int digit_length);
 
 int sameSign(JCOEF a, JCOEF b);
 

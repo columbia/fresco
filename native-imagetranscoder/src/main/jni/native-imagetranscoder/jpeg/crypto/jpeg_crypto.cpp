@@ -271,6 +271,7 @@ void diffuseACs(
     double alpha,
     double beta) {
 
+  LOGD("diffuseACs alpha=%lf, beta=%lf", alpha, beta);
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
     jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
     unsigned int width = comp_info->width_in_blocks;
@@ -337,6 +338,10 @@ void diffuseACs(
 
 float scaleToRange(float input, float input_min, float input_max, float scale_min, float scale_max) {
   return (scale_max - scale_min) * (input - input_min) / (input_max - input_min) + scale_min;
+}
+
+double scale_alpha_beta(mpf_t input, int digit_length) {
+  return 3.9 + mpf_get_d(input) / pow(10, digit_length - 1);
 }
 
 int sameSign(JCOEF a, JCOEF b) {
