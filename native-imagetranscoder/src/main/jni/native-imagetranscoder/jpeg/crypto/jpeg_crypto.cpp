@@ -10,6 +10,7 @@ extern "C" {
   #include "transupp.h"
 }
 #include <gmp.h>
+#include <math.h>
 #include <bitset>
 
 #include "decoded_image.h"
@@ -136,7 +137,8 @@ void gen_chaotic_sequence(
     struct chaos_dc *chaotic_seq,
     int n,
     mpf_t x_0,
-    mpf_t mu) {
+    mpf_t mu,
+    bool sort) {
 
   bool *sign_flips;
 
@@ -167,8 +169,17 @@ void gen_chaotic_sequence(
 
   // Order the sequence in ascending order based on the chaotic value
   // Each value's original position is maintained via the chaotic_pos member
-  std::sort(chaotic_seq, chaotic_seq + n, &chaos_gmp_sorter);
+  if (sort)
+    std::sort(chaotic_seq, chaotic_seq + n, &chaos_gmp_sorter);
   free(sign_flips);
+}
+
+void gen_chaotic_sequence(
+    struct chaos_dc *chaotic_seq,
+    int n,
+    mpf_t x_0,
+    mpf_t mu) {
+  gen_chaotic_sequence(chaotic_seq, n, x_0, mu, true);
 }
 
 static void populate_row(struct chaos_dc *chaotic_seq_row, int y, int width, float prev_row_last_val, float mu) {
@@ -250,6 +261,80 @@ void gen_chaotic_per_row(
   }
 
   mpf_clear(prev_val);
+}
+
+void diffuseACs(
+    j_decompress_ptr dinfo,
+    jvirt_barray_ptr* src_coefs,
+    mpf_t x_0,
+    mpf_t mu) {
+  for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
+    jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
+    unsigned int width = comp_info->width_in_blocks;
+    unsigned int height = comp_info->height_in_blocks;
+    unsigned int ith_mcu = 0;
+    mpf_t last_xn;
+
+    mpf_init(last_xn);
+
+    LOGD("diffuseACs iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
+
+    for (int y = 0; y < comp_info->height_in_blocks; y++) {
+      JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
+      struct chaos_dc *chaotic_seq;
+      unsigned int n_coefficients = comp_info->width_in_blocks * DCTSIZE2;
+
+      LOGD("diffuseACs allocating chaotic_seq");
+
+      chaotic_seq = (struct chaos_dc *) malloc(n_coefficients * sizeof(struct chaos_dc));
+      if (chaotic_seq == NULL) {
+        LOGE("diffuseACs failed to alloc memory for chaotic_seq");
+        return;
+      }
+
+      if (ith_mcu)
+        gen_chaotic_sequence(chaotic_seq, n_coefficients, last_xn, mu, false);
+      else
+        gen_chaotic_sequence(chaotic_seq, n_coefficients, x_0, mu, false);
+
+      // mcu_buff[y][x][c]
+      // - the cth coefficient
+      // - the xth horizontal block
+      // - the yth vertical block
+      mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr)dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
+
+      for (int x = 0; x < comp_info->width_in_blocks; x++) {
+        JCOEFPTR mcu_ptr; // Pointer to 8x8 block of coefficients (I think)
+        int last_non_zero_idx = 0;
+        mcu_ptr = mcu_buff[0][x];
+
+        for (int i = 1; i < DCTSIZE2; i++) {
+          if (mcu_ptr[i] == 0)
+            continue;
+
+          double alpha = 1.4929;
+          double beta = 3.9484;
+          // alpha * 255 * (1 - 255) + beta * 255 * (1 - 255/1000) + 124194 * 10^10
+          JCOEF xor_component = alpha * mcu_ptr[last_non_zero_idx] *
+              (1 - mcu_ptr[last_non_zero_idx]) + beta * mcu_ptr[last_non_zero_idx] *
+              (1 - mcu_ptr[last_non_zero_idx]/1000) + mpf_get_d(chaotic_seq[i * x].chaos_gmp) * pow(10.0, 10.0);
+          mcu_ptr[i] = mcu_ptr[i] ^ (xor_component % 256);
+          last_non_zero_idx = i;
+        }
+
+        ith_mcu++;
+      }
+
+      mpf_set(last_xn, chaotic_seq[n_coefficients - 1].chaos_gmp);
+      for (int i; i < n_coefficients; i++) {
+        mpf_clear(chaotic_seq[i].chaos_gmp);
+      }
+
+      free(chaotic_seq);
+    }
+
+    mpf_clear(last_xn);
+  }
 }
 
 float scaleToRange(float input, float input_min, float input_max, float scale_min, float scale_max) {

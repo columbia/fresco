@@ -843,6 +843,7 @@ static void encryptDCsACsMCUs(
   LOGD("encryptDCsACsMCUs allocated mpf_t x_0 and mu");
 
   permuteDCsSimple(&dinfo, src_coefs, x_0, mu);
+  diffuseACs(&dinfo, src_coefs, x_0, mu);
   //permuteDCs(&dinfo, src_coefs, x_0, mu);
   permuteMCUs(&dinfo, src_coefs, x_0, mu);
 

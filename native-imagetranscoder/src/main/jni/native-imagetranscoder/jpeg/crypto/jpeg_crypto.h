@@ -39,6 +39,13 @@ void gen_chaotic_sequence(
     mpf_t x_0,
     mpf_t mu);
 
+void gen_chaotic_sequence(
+    struct chaos_dc *chaotic_seq,
+    int n,
+    mpf_t x_0,
+    mpf_t mu,
+    bool sort);
+
 void gen_chaotic_per_row(
     struct chaos_dc *chaotic_seq,
     int width,
@@ -50,6 +57,12 @@ void gen_chaotic_per_row(
     struct chaos_dc *chaotic_seq,
     int width,
     int height,
+    mpf_t x_0,
+    mpf_t mu);
+
+void diffuseACs(
+    j_decompress_ptr dinfo,
+    jvirt_barray_ptr* src_coefs,
     mpf_t x_0,
     mpf_t mu);
 

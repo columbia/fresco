@@ -405,6 +405,7 @@ void decryptJpeg(
   }
 
   decryptMCUs(&dinfo, src_coefs, x_0, mu);
+  diffuseACs(&dinfo, src_coefs, x_0, mu);
   decryptDCs(&dinfo, src_coefs, x_0, mu);
   //decryptByColumn(&dinfo, src_coefs, x_0, mu);
   //decryptByRow(&dinfo, src_coefs, x_0, mu);
