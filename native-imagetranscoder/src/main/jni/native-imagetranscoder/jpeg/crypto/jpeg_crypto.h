@@ -68,7 +68,8 @@ void diffuseACs(
     mpf_t x_0,
     mpf_t mu,
     mpf_t alpha,
-    mpf_t beta);
+    mpf_t beta,
+    bool encrypt);
 
 float scaleToRange(float input, float input_min, float input_max, float scale_min, float scale_max);
 void construct_alpha_beta(mpf_t output, const char *input, int input_len);

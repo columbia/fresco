@@ -558,7 +558,7 @@ void decryptJpeg(
   //decryptAllACs(&dinfo, src_coefs, x_0, mu);
   construct_alpha_beta(alpha, x_0_char + (x_0_len - 2 - 16 - 1), 16);
   construct_alpha_beta(beta, mu_char + (mu_len - 1 - 16 - 1), 16);
-  diffuseACs(&dinfo, src_coefs, x_0, mu, alpha, beta);
+  diffuseACs(&dinfo, src_coefs, x_0, mu, alpha, beta, false);
 
   decryptDCs(&dinfo, src_coefs, x_0, mu);
 

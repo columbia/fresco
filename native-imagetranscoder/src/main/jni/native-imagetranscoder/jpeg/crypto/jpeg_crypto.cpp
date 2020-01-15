@@ -269,7 +269,8 @@ void diffuseACs(
     mpf_t x_0,
     mpf_t mu,
     mpf_t alpha,
-    mpf_t beta) {
+    mpf_t beta,
+    bool encrypt) {
 
   mpf_t dc_coeff;
   mpf_t alpha_part;
@@ -321,14 +322,11 @@ void diffuseACs(
 
         for (int i = 1; i < DCTSIZE2; i++) {
           JCOEF xor_component;
+          JCOEF new_ac_coeff;
+          int mod_amt = 100;
 
           if (mcu_ptr[i] == 0)
             continue;
-
-          // alpha * 255 * (1 - 255) + beta * 255 * (1 - 255/1000) + 124194 * 10^10
-          //JCOEF xor_component = alpha * mcu_ptr[last_non_zero_idx] *
-          //    (1 - mcu_ptr[last_non_zero_idx]) + beta * mcu_ptr[last_non_zero_idx] *
-          //    (1 - mcu_ptr[last_non_zero_idx]/1000) + mpf_get_d(chaotic_seq[i * x].chaos_gmp) * pow(10.0, 10.0);
 
           // DC * alpha * chaos[i-1] + beta * chaos[i-1]
           mpf_set_d(dc_coeff, mcu_ptr[0]);
@@ -343,7 +341,9 @@ void diffuseACs(
 
           xor_component = mpf_get_d(xor_component_mpf);
 
-          mcu_ptr[i] = mcu_ptr[i] ^ (xor_component % 256);
+          new_ac_coeff = mcu_ptr[i] ^ (xor_component % mod_amt);
+
+          mcu_ptr[i] = new_ac_coeff;
         }
 
         ith_mcu++;
