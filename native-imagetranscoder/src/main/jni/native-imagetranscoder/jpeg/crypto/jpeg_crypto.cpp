@@ -369,7 +369,7 @@ float scaleToRange(float input, float input_min, float input_max, float scale_mi
 void construct_alpha_beta(mpf_t output, const char *input, int input_len) {
   char *output_str;
   int preset_parts_len = 5;
-  int total_len = preset_parts_len + input_len;
+  int total_len = preset_parts_len + input_len + 1;
 
   output_str = (char *) malloc(total_len * sizeof(char));
   if (output_str == NULL) {
@@ -377,7 +377,17 @@ void construct_alpha_beta(mpf_t output, const char *input, int input_len) {
     return;
   }
 
-  snprintf(output_str, total_len, "3.9%se0", input);
+  output_str[total_len - 1] = '\0';
+  output_str[0] = '3';
+  output_str[1] = '.';
+  output_str[2] = '9';
+
+  output_str[total_len - 3] = 'e';
+  output_str[total_len - 2] = '0';
+
+  strncpy(&output_str[3], input, input_len);
+
+  LOGD("construct_alpha_beta %s", output_str);
 
   mpf_set_str(output, output_str, 10);
 
