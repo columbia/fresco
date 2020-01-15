@@ -550,20 +550,15 @@ void decryptJpeg(
     goto teardown;
   }
 
-  if (mpf_init_set_str(alpha, x_0_char + x_0_len - 16, 10)) {
-    LOGD("encryptDCsACsMCUs failed to mpf_set_str(alpha)");
-    goto teardown;
-  }
-  if (mpf_init_set_str(beta, mu_char + mu_len - 16, 10)) {
-    LOGD("decryptJpeg failed to mpf_set_str(beta)");
-    goto teardown;
-  }
+  mpf_inits(alpha, beta, NULL);
 
   decryptMCUs(&dinfo, src_coefs, x_0, mu);
 
-  decryptNonZeroACs(&dinfo, src_coefs, x_0, mu);
+  //decryptNonZeroACs(&dinfo, src_coefs, x_0, mu);
   //decryptAllACs(&dinfo, src_coefs, x_0, mu);
-  //diffuseACs(&dinfo, src_coefs, x_0, mu, scale_alpha_beta(alpha, 16), scale_alpha_beta(beta, 16));
+  construct_alpha_beta(alpha, x_0_char + x_0_len - 16, 16);
+  construct_alpha_beta(beta, mu_char + mu_len - 16, 16);
+  diffuseACs(&dinfo, src_coefs, x_0, mu, alpha, beta);
 
   decryptDCs(&dinfo, src_coefs, x_0, mu);
 

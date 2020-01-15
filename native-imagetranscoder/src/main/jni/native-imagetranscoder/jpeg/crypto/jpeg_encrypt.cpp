@@ -986,23 +986,17 @@ static void encryptDCsACsMCUs(
     goto teardown;
   }
 
-  if (mpf_init_set_str(alpha, x_0_char + x_0_len - 16, 10)) {
-    LOGD("encryptDCsACsMCUs failed to mpf_set_str(alpha)");
-    goto teardown;
-  }
-  if (mpf_init_set_str(beta, mu_char + mu_len - 16, 10)) {
-    LOGD("encryptDCsACsMCUs failed to mpf_set_str(beta)");
-    goto teardown;
-  }
-
-  LOGD("encryptDCsACsMCUs allocated mpf_t x_0 and mu");
+  mpf_inits(alpha, beta, NULL);
 
   permuteDCsSimple(&dinfo, src_coefs, x_0, mu);
   //permuteDCs(&dinfo, src_coefs, x_0, mu);
 
-  permuteNonZeroACs(&dinfo, src_coefs, x_0, mu);
+  //permuteNonZeroACs(&dinfo, src_coefs, x_0, mu);
   //permuteAllACs(&dinfo, src_coefs, x_0, mu);
-  //diffuseACs(&dinfo, src_coefs, x_0, mu, scale_alpha_beta(alpha, 16), scale_alpha_beta(beta, 16));
+
+  construct_alpha_beta(alpha, x_0_char + x_0_len - 16, 16);
+  construct_alpha_beta(beta, mu_char + mu_len - 16, 16);
+  diffuseACs(&dinfo, src_coefs, x_0, mu, alpha, beta);
 
   permuteMCUs(&dinfo, src_coefs, x_0, mu);
 

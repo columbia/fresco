@@ -268,10 +268,19 @@ void diffuseACs(
     jvirt_barray_ptr* src_coefs,
     mpf_t x_0,
     mpf_t mu,
-    double alpha,
-    double beta) {
+    mpf_t alpha,
+    mpf_t beta) {
 
-  LOGD("diffuseACs alpha=%lf, beta=%lf", alpha, beta);
+  mpf_t dc_coeff;
+  mpf_t alpha_part;
+  mpf_t dc_alpha_part;
+  mpf_t beta_part;
+  mpf_t xor_component_mpf;
+
+  mpf_inits(dc_coeff, alpha_part, dc_alpha_part, beta_part, xor_component_mpf, NULL);
+
+  LOGD("diffuseACs alpha=%lf, beta=%lf", mpf_get_d(alpha), mpf_get_d(beta));
+
   for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
     jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
     unsigned int width = comp_info->width_in_blocks;
@@ -307,19 +316,34 @@ void diffuseACs(
 
       for (int x = 0; x < comp_info->width_in_blocks; x++) {
         JCOEFPTR mcu_ptr; // Pointer to 8x8 block of coefficients (I think)
-        int last_non_zero_idx = 0;
+
         mcu_ptr = mcu_buff[0][x];
 
         for (int i = 1; i < DCTSIZE2; i++) {
+          JCOEF xor_component;
+
           if (mcu_ptr[i] == 0)
             continue;
 
           // alpha * 255 * (1 - 255) + beta * 255 * (1 - 255/1000) + 124194 * 10^10
-          JCOEF xor_component = alpha * mcu_ptr[last_non_zero_idx] *
-              (1 - mcu_ptr[last_non_zero_idx]) + beta * mcu_ptr[last_non_zero_idx] *
-              (1 - mcu_ptr[last_non_zero_idx]/1000) + mpf_get_d(chaotic_seq[i * x].chaos_gmp) * pow(10.0, 10.0);
+          //JCOEF xor_component = alpha * mcu_ptr[last_non_zero_idx] *
+          //    (1 - mcu_ptr[last_non_zero_idx]) + beta * mcu_ptr[last_non_zero_idx] *
+          //    (1 - mcu_ptr[last_non_zero_idx]/1000) + mpf_get_d(chaotic_seq[i * x].chaos_gmp) * pow(10.0, 10.0);
+
+          // DC * alpha * chaos[i-1] + beta * chaos[i-1]
+          mpf_set_d(dc_coeff, mcu_ptr[0]);
+
+          mpf_mul(alpha_part, alpha, chaotic_seq[(i - 1) * x].chaos_gmp);
+
+          // The two multiplied parts
+          mpf_mul(dc_alpha_part, dc_coeff, alpha_part);
+          mpf_mul(beta_part, beta, chaotic_seq[(i - 1) * x].chaos_gmp);
+
+          mpf_add(xor_component_mpf, dc_alpha_part, beta_part);
+
+          xor_component = mpf_get_d(xor_component_mpf);
+
           mcu_ptr[i] = mcu_ptr[i] ^ (xor_component % 256);
-          last_non_zero_idx = i;
         }
 
         ith_mcu++;
@@ -334,14 +358,30 @@ void diffuseACs(
     free(chaotic_seq);
     mpf_clear(last_xn);
   }
+
+  mpf_clears(dc_coeff, alpha_part, dc_alpha_part, beta_part, xor_component_mpf, NULL);
 }
 
 float scaleToRange(float input, float input_min, float input_max, float scale_min, float scale_max) {
   return (scale_max - scale_min) * (input - input_min) / (input_max - input_min) + scale_min;
 }
 
-double scale_alpha_beta(mpf_t input, int digit_length) {
-  return 3.9 + mpf_get_d(input) / pow(10, digit_length - 1);
+void construct_alpha_beta(mpf_t output, const char *input, int input_len) {
+  char *output_str;
+  int preset_parts_len = 5;
+  int total_len = preset_parts_len + input_len;
+
+  output_str = (char *) malloc(total_len * sizeof(char));
+  if (output_str == NULL) {
+    LOGE("construct_alpha_beta() Failed to allocate output_str");
+    return;
+  }
+
+  snprintf(output_str, total_len, "3.9%se0", input);
+
+  mpf_set_str(output, output_str, 10);
+
+  free(output_str);
 }
 
 int sameSign(JCOEF a, JCOEF b) {
