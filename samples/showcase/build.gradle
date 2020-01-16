@@ -92,6 +92,8 @@ dependencies {
     implementation "com.facebook.stetho:stetho-okhttp3:${STETHO_VERSION}"
 
     implementation 'com.google.firebase:firebase-analytics:17.2.0'
+    implementation 'com.google.firebase:firebase-ml-vision:24.0.1'
+    implementation 'com.google.firebase:firebase-ml-vision-image-label-model:19.0.0'
 
     implementation project(':animated-base')
     implementation project(':animated-gif')
