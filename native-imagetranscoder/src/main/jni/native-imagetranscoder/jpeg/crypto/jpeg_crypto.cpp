@@ -22,6 +22,7 @@ extern "C" {
 #include "jpeg/jpeg_codec.h"
 #include "jpeg_crypto.h"
 #include "sha512.h"
+#include "rand.h"
 
 namespace facebook {
 namespace imagepipeline {
@@ -360,6 +361,92 @@ void diffuseACs(
   }
 
   mpf_clears(dc_coeff, alpha_part, dc_alpha_part, beta_part, xor_component_mpf, NULL);
+}
+
+void diffuseACsFlipSigns(
+    j_decompress_ptr dinfo,
+    jvirt_barray_ptr* src_coefs,
+    mpf_t x_0,
+    mpf_t mu,
+    mpf_t alpha,
+    mpf_t beta) {
+
+  char *mpf_val_x_0;
+  char *mpf_val_mu;
+  mp_exp_t exponent;
+  std::string concat_hashes;
+  unsigned int isaac_i = 0;
+
+  mpf_val_x_0 = mpf_get_str(NULL, &exponent, 10, 500, x_0);
+  mpf_val_mu = mpf_get_str(NULL, &exponent, 10, 500, mu);
+
+  LOGD("diffuseACsFlipSigns x_0=%s, mu=%s", mpf_val_x_0, mpf_val_mu);
+  // 256 bytes
+  concat_hashes.append(sw::sha512::calculate(mpf_val_x_0));
+  concat_hashes.append(sw::sha512::calculate(mpf_val_mu));
+  concat_hashes.append(sw::sha512::calculate(concat_hashes));
+  concat_hashes.append(sw::sha512::calculate(concat_hashes));
+
+  free(mpf_val_x_0);
+  free(mpf_val_mu);
+
+  LOGD("diffuseACsFlipSigns alpha=%lf, beta=%lf", mpf_get_d(alpha), mpf_get_d(beta));
+
+  for (int comp_i = 0; comp_i < dinfo->num_components; comp_i++) {
+    jpeg_component_info *comp_info = dinfo->comp_info + comp_i;
+    unsigned int width = comp_info->width_in_blocks;
+    unsigned int height = comp_info->height_in_blocks;
+    unsigned int n_coefficients = comp_info->width_in_blocks * DCTSIZE2;
+
+    unsigned int non_zero_ac_count = 0;
+    unsigned int ac_flips = 0;
+    randctx ctx;
+
+    // Initialize ISAAC seed
+    ctx.randa = ctx.randb = ctx.randc = (ub4) 0;
+    for (int i = 0; i < RANDSIZ; i++) {
+      ctx.randrsl[i] = concat_hashes[i];
+    }
+    randinit(&ctx, 1);
+
+    LOGD("diffuseACsFlipSigns iterating over image component %d (comp_info->height_in_blocks=%d)", comp_i, comp_info->height_in_blocks);
+
+    for (int y = 0; y < comp_info->height_in_blocks; y++) {
+      JBLOCKARRAY mcu_buff; // Pointer to list of horizontal 8x8 blocks
+
+      // mcu_buff[y][x][c]
+      // - the cth coefficient
+      // - the xth horizontal block
+      // - the yth vertical block
+      mcu_buff = (dinfo->mem->access_virt_barray)((j_common_ptr)dinfo, src_coefs[comp_i], y, (JDIMENSION) 1, TRUE);
+
+      for (int x = 0; x < comp_info->width_in_blocks; x++) {
+        JCOEFPTR mcu_ptr; // Pointer to 8x8 block of coefficients (I think)
+
+        mcu_ptr = mcu_buff[0][x];
+
+        if (isaac_i % 2048 == 0) {
+          isaac(&ctx);
+        }
+
+        for (int i = 1; i < DCTSIZE2; i++) {
+          isaac_i++;
+          if (mcu_ptr[i] == 0)
+           continue;
+
+          //LOGD("diffuseACsFlipSigns %d / %d", isaac_i % 256, isaac_i % 8);
+          if (std::bitset<8>(ctx.randrsl[isaac_i % 256]).test(isaac_i % 8)) {
+            mcu_ptr[i] *= -1;
+            ac_flips++;
+          }
+
+          non_zero_ac_count++;
+        }
+      }
+    }
+
+    LOGD("diffuseACsFlipSigns non_zero_ac_count=%u, ac_flips=%u", non_zero_ac_count, ac_flips);
+  }
 }
 
 float scaleToRange(float input, float input_min, float input_max, float scale_min, float scale_max) {
