@@ -31,11 +31,14 @@ import com.facebook.imagepipeline.image.EncodedImage
 import com.facebook.imagepipeline.nativecode.NativeImageDecryptorFactory
 import com.facebook.imagepipeline.nativecode.NativeImageEncryptorFactory
 import com.facebook.imagepipeline.request.ImageRequestBuilder
+import kotlinx.coroutines.*
+import org.json.JSONObject
 
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.net.URL
+import java.util.*
 
 class DraweeEncryptFragment : BaseShowcaseFragment() {
 
@@ -83,7 +86,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         view.findViewById<View>(R.id.btn_random_uri)
                 .setOnClickListener {
                     mUri = sampleUris().createSampleUri()
-                    mUri = Uri.parse("")
+                    //mUri = Uri.parse("")
                     setNewKey()
                     setEncryptOptions()
                 }
@@ -171,13 +174,23 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
         FLog.d(TAG, "Got listUrl=$listUrl")
 
-        downloader.downloadFromList(listUrl) {
-            for (imageFile in it) {
-                scanFile(imageFile.absolutePath)
-            }
+        val jsonObjs = Collections.synchronizedList(mutableListOf<JSONObject>())
+
+        downloader.downloadFromList(listUrl) { files ->
             val analyzer = MLKitAnalyzer(Preconditions.checkNotNull<Context>(this.context))
 
-            //analyzer.analyze(filePath, MLKitAnalyzer.Labeler.ON_DEVICE);
+            GlobalScope.launch(Dispatchers.Main) {
+                // Process only one image at a time
+                for (imageFile in files) {
+                    withContext(Dispatchers.IO) {
+                        scanFile(imageFile.absolutePath)
+                        FLog.d(TAG, "Invoking analyze")
+                        analyzer.analyze(Uri.fromFile(imageFile), MLKitAnalyzer.Labeler.ON_DEVICE) { labels ->
+                            jsonObjs.add(analyzer.toJson(Uri.fromFile(imageFile).lastPathSegment!!, labels))
+                        }
+                    }
+                }
+            }
         }
     }
 

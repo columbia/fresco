@@ -11,8 +11,6 @@ import java.net.URL
 
 class TestImageDownloader(private val downloadDir: File) {
 
-    private val TAG = "TestImageDownloader"
-
     fun downloadFromList(listUrl: URL, downloadCompleteCallback: (imageFiles: List<File>) -> Unit) {
         GlobalScope.launch(context = Dispatchers.Main) {
             withContext(Dispatchers.IO) {
@@ -39,5 +37,9 @@ class TestImageDownloader(private val downloadDir: File) {
                 downloadCompleteCallback(savedFiles)
             }
         }
+    }
+
+    companion object {
+        private const val TAG = "TestImageDownloader"
     }
 }

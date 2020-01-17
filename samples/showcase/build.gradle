@@ -44,11 +44,14 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-showcase.pro'
 
             resValue "string", "image_list_url", showcaseProperties.getProperty("encryptImageListUrl", "default url")
+            resValue "string", "ml_results_file", showcaseProperties.getProperty("mlLabelResultsFile", "ml_labels.json")
         }
         debug {
             minifyEnabled false
 
+            // Add encryptImageListUrl={url to text file with image urls} to local.properties
             resValue "string", "image_list_url", showcaseProperties.getProperty("encryptImageListUrl", "default url")
+            resValue "string", "ml_results_file", showcaseProperties.getProperty("mlLabelResultsFile", "ml_labels.json")
 
         }
         instrumentation {
