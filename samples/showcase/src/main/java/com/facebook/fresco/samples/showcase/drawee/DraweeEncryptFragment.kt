@@ -32,6 +32,7 @@ import com.facebook.imagepipeline.nativecode.NativeImageDecryptorFactory
 import com.facebook.imagepipeline.nativecode.NativeImageEncryptorFactory
 import com.facebook.imagepipeline.request.ImageRequestBuilder
 import kotlinx.coroutines.*
+import org.json.JSONArray
 import org.json.JSONObject
 
 import java.io.File
@@ -174,19 +175,35 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
         FLog.d(TAG, "Got listUrl=$listUrl")
 
-        val jsonObjs = Collections.synchronizedList(mutableListOf<JSONObject>())
-
         downloader.downloadFromList(listUrl) { files ->
-            val analyzer = MLKitAnalyzer(Preconditions.checkNotNull<Context>(this.context))
+            labelDownloadedFiles(files)
+        }
+    }
 
-            GlobalScope.launch(Dispatchers.Main) {
-                // Process only one image at a time
-                for (imageFile in files) {
-                    withContext(Dispatchers.IO) {
-                        scanFile(imageFile.absolutePath)
-                        FLog.d(TAG, "Invoking analyze")
-                        analyzer.analyze(Uri.fromFile(imageFile), MLKitAnalyzer.Labeler.ON_DEVICE) { labels ->
-                            jsonObjs.add(analyzer.toJson(Uri.fromFile(imageFile).lastPathSegment!!, labels))
+    private fun labelDownloadedFiles(files: List<File>) {
+        val jsonObjs = Collections.synchronizedList(mutableListOf<JSONObject>())
+        val analyzer = MLKitAnalyzer(Preconditions.checkNotNull<Context>(this.context))
+
+        GlobalScope.launch(Dispatchers.Main) {
+            // Process only one image at a time
+            for (imageFile in files) {
+                withContext(Dispatchers.IO) {
+                    scanFile(imageFile.absolutePath)
+                    FLog.d(TAG, "Invoking analyze")
+                    analyzer.analyze(Uri.fromFile(imageFile), MLKitAnalyzer.Labeler.ON_DEVICE) { labels ->
+                        jsonObjs.add(analyzer.toJson(Uri.fromFile(imageFile).lastPathSegment!!, labels))
+
+                        if (files.size == jsonObjs.size) {
+                            FLog.d(TAG, "Final json objs: $jsonObjs")
+                            val outputFilename = File(encryptedImageDir, "downloads")
+                                    .resolve("${System.currentTimeMillis()}_${getString(R.string.ml_results_file)}")
+
+                            val jsonArray = JSONArray(jsonObjs).toString(2)
+                            FLog.d(TAG, "Final jsonArray: $jsonArray")
+
+                            outputFilename.writeText(jsonArray)
+                            FLog.d(TAG, "Wrote ML labels to ${outputFilename.absolutePath}")
+                            scanFile(outputFilename.absolutePath)
                         }
                     }
                 }

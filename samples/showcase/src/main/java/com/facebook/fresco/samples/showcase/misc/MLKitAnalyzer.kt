@@ -48,12 +48,11 @@ class MLKitAnalyzer(private val context: Context) {
         jsonObj.put("image", imageName)
 
         for (label in labels) {
-            val labelMap = mutableMapOf<String, String>()
-            labelMap["text"] = label.text
-            //labelMap["entityId"] = label.entityId
-            labelMap["confidence"] = label.confidence.toString()
+            val labelObj = JSONObject()
+            labelObj.put("text", label.text)
+            labelObj.put("confidence", label.confidence.toString())
 
-            jsonObj.accumulate("labels", labelMap)
+            jsonObj.accumulate("labels", labelObj)
         }
 
         return jsonObj
