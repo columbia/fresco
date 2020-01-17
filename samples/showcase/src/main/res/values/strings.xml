@@ -18,6 +18,7 @@
   <string name="drawee_encrypt_title">JPEG Encryption</string>
   <string name="drawee_encrypt_help">JPEG encryption.</string>
   <string name="drawee_encrypt_decrypt_button">Decrypt JPEG</string>
+  <string name="drawee_encrypt_start_batch_encrypt">Start Batch Encrypt</string>
   <string name="drawee_encrypt_decrypt_disk_button">Decrypt JPEG on Disk</string>
   <string name="drawee_encrypt_start_ml_labeling_button">Start ML Labeling</string>
 

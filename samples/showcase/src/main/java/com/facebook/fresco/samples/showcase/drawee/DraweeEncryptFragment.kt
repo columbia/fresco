@@ -98,16 +98,28 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         view.findViewById<View>(R.id.btn_decrypt_image_disk)
                 .setOnClickListener { setDecryptFromUrlOptions() }
 
-        view.findViewById<View>(R.id.btn_start_ml_labeling)
-                .setOnClickListener { labelImagesFromRemoteList() }
+        view.findViewById<View>(R.id.btn_start_ml_labeling).setOnClickListener {
+            downloadImagesFromRemoteList {
+                labelFiles(it)
+            }
+        }
+
+        view.findViewById<View>(R.id.btn_start_batch_encrypt).setOnClickListener {
+            downloadImagesFromRemoteList {
+                encryptFiles(it)
+            }
+        }
     }
 
-    private fun setNewKey() {
-        lastKey = JpegCryptoKey.Builder().generateNewValues(72, 72).build()
-        lastKey = JpegCryptoKey.Builder()
-                .setX0("0.776129673739571545164782701951000816488709002838321334050408728659596467124659438412371823627863280e-1")
-                .setMu("3.669367621207023984299275643031978184898674105584480292875745487930315472819066461859774116271133194e0")
-                .build()
+    private fun setNewKey(useStaticKey: Boolean = true) {
+        lastKey = if (useStaticKey) {
+            JpegCryptoKey.Builder()
+                    .setX0("0.776129673739571545164782701951000816488709002838321334050408728659596467124659438412371823627863280e-1")
+                    .setMu("3.669367621207023984299275643031978184898674105584480292875745487930315472819066461859774116271133194e0")
+                    .build()
+        } else {
+            JpegCryptoKey.Builder().generateNewValues(72, 72).build()
+        }
         FLog.d(TAG, "Set lastKey: %s", lastKey)
     }
 
@@ -162,7 +174,8 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         //mDraweeDecryptDiskView.setImageRequest(imageRequest);
     }
 
-    private fun labelImagesFromRemoteList() {
+    @Synchronized
+    private fun downloadImagesFromRemoteList(onDownloadcomplete: (List<File>) -> Unit) {
         val downloadDir = File(encryptedImageDir, "downloads")
 
         if (!downloadDir.mkdir() && !downloadDir.exists()) {
@@ -176,11 +189,11 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         FLog.d(TAG, "Got listUrl=$listUrl")
 
         downloader.downloadFromList(listUrl) { files ->
-            labelDownloadedFiles(files)
+            onDownloadcomplete(files)
         }
     }
 
-    private fun labelDownloadedFiles(files: List<File>) {
+    private fun labelFiles(files: List<File>) {
         val jsonObjs = Collections.synchronizedList(mutableListOf<JSONObject>())
         val analyzer = MLKitAnalyzer(Preconditions.checkNotNull<Context>(this.context))
 
@@ -211,6 +224,42 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         }
     }
 
+    private fun encryptImage(image: File) {
+        pipeline!!.clearCaches()
+        setNewKey(true)
+        val fileUri = Uri.fromFile(image)
+        val imageRequest = ImageRequestBuilder.newBuilderWithSource(fileUri)
+                .setEncrypt(true)
+                .setJpegCryptoKey(lastKey)
+                .setImageDecodeOptions(ImageDecodeOptionsBuilder.newBuilder().build())
+                .build()
+
+        val dataSource = pipeline!!.fetchEncodedImage(imageRequest, this)
+
+        val factory = NativeImageEncryptorFactory.getNativeImageEncryptorFactory()
+
+        val outputFile = image.parentFile.resolve("${image.nameWithoutExtension}_encrypted.${image.extension}")
+
+        FLog.d(TAG, "encryptImage() writing to output file: $outputFile")
+        dataSourceToDisk(dataSource, mDraweeEncryptView, factory, null, outputFile)
+    }
+
+    private fun encryptFiles(files: List<File>) {
+        GlobalScope.launch(Dispatchers.Main) {
+            // Process only one image at a time
+            for (imageFile in files) {
+                if (imageFile.nameWithoutExtension.contains("encrypted")) {
+                    continue
+                }
+                withContext(Dispatchers.IO) {
+                    scanFile(imageFile.absolutePath)
+                    FLog.d(TAG, "Encrypting image $imageFile")
+                    encryptImage(imageFile)
+                }
+            }
+        }
+    }
+
     private fun scanFile(path: String) {
         MediaScannerConnection.scanFile(context, arrayOf(path), null, msClient)
     }
@@ -218,7 +267,8 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
     private fun dataSourceToDisk(dataSource: DataSource<CloseableReference<PooledByteBuffer>>,
                                  viewToDisplayWith: SimpleDraweeView?,
                                  encryptorFactory: ImageEncryptorFactory?,
-                                 decryptorFactory: ImageDecryptorFactory?) {
+                                 decryptorFactory: ImageDecryptorFactory?,
+                                 outputFile: File? = null) {
         val executor = DefaultExecutorSupplier(1).forBackgroundTasks()
 
         val dataSubscriber = object : BaseDataSubscriber<CloseableReference<PooledByteBuffer>>() {
@@ -232,26 +282,28 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
                 val ref = dataSource.result
                 if (ref != null) {
-                    var tempFile: File? = null
+                    var outputImageFile: File? = null
                     try {
                         val encodedImage = EncodedImage(ref)
                         val `is` = encodedImage.inputStream
 
                         try {
-                            tempFile = File.createTempFile(mUri!!.lastPathSegment, ".jpg", encryptedImageDir)
-                            val fileOutputStream = FileOutputStream(tempFile)
+                            outputImageFile = outputFile
+                                    ?: File.createTempFile(mUri!!.lastPathSegment, ".jpg", encryptedImageDir)
+
+                            val fileOutputStream = FileOutputStream(outputImageFile)
 
                             if (encryptorFactory != null) {
                                 val encryptor = encryptorFactory.createImageEncryptor(encodedImage.imageFormat)
                                 encryptor.encrypt(encodedImage, fileOutputStream, lastKey)
-                                FLog.d(TAG, "Wrote %s encrypted to %s (size: %s bytes)", mUri, tempFile!!.absolutePath, tempFile.length() / 8)
+                                FLog.d(TAG, "Wrote %s encrypted to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
                             } else if (decryptorFactory != null) {
                                 val decryptor = decryptorFactory.createImageDecryptor(encodedImage.imageFormat)
                                 decryptor.decrypt(encodedImage, fileOutputStream, lastKey)
-                                FLog.d(TAG, "Wrote %s decrypted to %s (size: %s bytes)", mUri, tempFile!!.absolutePath, tempFile.length() / 8)
+                                FLog.d(TAG, "Wrote %s decrypted to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
                             }
 
-                            scanFile(tempFile!!.absolutePath)
+                            scanFile(outputImageFile!!.absolutePath)
 
                             Closeables.close(fileOutputStream, true)
                         } catch (e: IOException) {
@@ -263,8 +315,8 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
                         CloseableReference.closeSafely(ref)
                     }
 
-                    if (tempFile != null) {
-                        lastSavedImage = Uri.parse(tempFile.toURI().toString())
+                    if (outputImageFile != null) {
+                        lastSavedImage = Uri.parse(outputImageFile.toURI().toString())
                         val encryptedImageRequest = ImageRequestBuilder.newBuilderWithSource(lastSavedImage)
                                 .setImageDecodeOptions(ImageDecodeOptionsBuilder.newBuilder().build())
                                 .build()
