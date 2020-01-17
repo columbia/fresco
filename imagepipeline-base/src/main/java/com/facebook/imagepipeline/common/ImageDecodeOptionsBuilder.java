@@ -29,6 +29,10 @@ public class ImageDecodeOptionsBuilder<T extends ImageDecodeOptionsBuilder> {
 
   public ImageDecodeOptionsBuilder() {}
 
+  static public ImageDecodeOptionsBuilder newBuilder() {
+    return new ImageDecodeOptionsBuilder();
+  }
+
   /**
    * Sets the builder to be equivalent to the specified options.
    *
