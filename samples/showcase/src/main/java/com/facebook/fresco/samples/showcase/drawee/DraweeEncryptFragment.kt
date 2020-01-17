@@ -35,6 +35,7 @@ import com.facebook.imagepipeline.request.ImageRequestBuilder
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.net.URL
 
 class DraweeEncryptFragment : BaseShowcaseFragment() {
 
@@ -92,6 +93,9 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
         view.findViewById<View>(R.id.btn_decrypt_image_disk)
                 .setOnClickListener { setDecryptFromUrlOptions() }
+
+        view.findViewById<View>(R.id.btn_start_ml_labeling)
+                .setOnClickListener { labelImagesFromRemoteList() }
     }
 
     private fun setNewKey() {
@@ -163,11 +167,18 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
         val downloader = TestImageDownloader(downloadDir)
 
-        //downloader.downloadFromList();
+        val listUrl = URL(getString(R.string.image_list_url))
 
-        val analyzer = MLKitAnalyzer(Preconditions.checkNotNull<Context>(this.context))
+        FLog.d(TAG, "Got listUrl=$listUrl")
 
-        //analyzer.analyze(filePath, MLKitAnalyzer.Labeler.ON_DEVICE);
+        downloader.downloadFromList(listUrl) {
+            for (imageFile in it) {
+                scanFile(imageFile.absolutePath)
+            }
+            val analyzer = MLKitAnalyzer(Preconditions.checkNotNull<Context>(this.context))
+
+            //analyzer.analyze(filePath, MLKitAnalyzer.Labeler.ON_DEVICE);
+        }
     }
 
     private fun scanFile(path: String) {

@@ -10,6 +10,10 @@ apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-android-extensions'
 apply plugin: 'com.google.gms.google-services'
 
+def showcasePropertiesFile = rootProject.file("local.properties")
+def showcaseProperties = new Properties()
+showcaseProperties.load(new FileInputStream(showcasePropertiesFile))
+
 android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdkVersion rootProject.ext.compileSdkVersion
@@ -30,15 +34,22 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         vectorDrawables.useSupportLibrary = true // needed for tinting
+
+
     }
 
     buildTypes {
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-showcase.pro'
+
+            resValue "string", "image_list_url", showcaseProperties.getProperty("encryptImageListUrl", "default url")
         }
         debug {
             minifyEnabled false
+
+            resValue "string", "image_list_url", showcaseProperties.getProperty("encryptImageListUrl", "default url")
+
         }
         instrumentation {
             initWith debug

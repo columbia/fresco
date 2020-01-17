@@ -1,5 +1,7 @@
 package com.facebook.fresco.samples.showcase.misc
 
+import android.net.Uri
+import com.facebook.common.logging.FLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -9,23 +11,33 @@ import java.net.URL
 
 class TestImageDownloader(private val downloadDir: File) {
 
+    private val TAG = "TestImageDownloader"
+
     fun downloadFromList(listUrl: URL, downloadCompleteCallback: (imageFiles: List<File>) -> Unit) {
         GlobalScope.launch(context = Dispatchers.Main) {
-            val result = withContext(Dispatchers.IO) {
+            withContext(Dispatchers.IO) {
                 val savedFiles = mutableListOf<File>()
                 for (line in listUrl.readText().lines()) {
                     val imageUrl = URL(line)
+                    val imageUri = Uri.parse(line)
 
-                    imageUrl.openStream().use {
-                        val downloadedImage = File.createTempFile(imageUrl.file, ".jpg", downloadDir)
+                    FLog.d(TAG, "Got line: $line")
+                    val downloadedImage = File(downloadDir, imageUri.lastPathSegment!!)
 
-                        savedFiles.add(downloadedImage)
+                    if (!downloadedImage.exists()) {
+                        FLog.d(TAG, "$line didn't exist, saving to disk: $downloadedImage")
+                        imageUrl.openStream().use { inputStream ->
+                            downloadedImage.outputStream().use { outputStream ->
+                                inputStream.copyTo(outputStream)
+                            }
+
+                        }
                     }
+                    savedFiles.add(downloadedImage)
                 }
 
                 downloadCompleteCallback(savedFiles)
             }
         }
-
     }
 }

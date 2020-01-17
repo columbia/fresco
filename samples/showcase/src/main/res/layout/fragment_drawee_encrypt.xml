@@ -45,6 +45,12 @@
             fresco:actualImageScaleType="none" />
 
         <Button
+            android:id="@+id/btn_start_ml_labeling"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/drawee_encrypt_start_ml_labeling_button" />
+
+        <Button
             android:id="@+id/btn_decrypt_image_disk"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
