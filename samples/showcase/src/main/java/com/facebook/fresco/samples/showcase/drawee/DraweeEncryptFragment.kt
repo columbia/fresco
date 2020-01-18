@@ -51,6 +51,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
     private var mUri: Uri? = null
 
     private var encryptedImageDir: File? = null
+    private var downloadDir: File? = null
     private var lastSavedImage: Uri? = null
     private var lastKey: JpegCryptoKey? = null
 
@@ -75,6 +76,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         pipeline = Fresco.getImagePipeline()
 
         encryptedImageDir = Preconditions.checkNotNull<Context>(context).getExternalFilesDir(null)
+        downloadDir = File(encryptedImageDir, "downloads")
 
         mUri = sampleUris().createSampleUri()
         mDraweeEncryptView = view.findViewById(R.id.drawee_view)
@@ -99,9 +101,12 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
                 .setOnClickListener { setDecryptFromUrlOptions() }
 
         view.findViewById<View>(R.id.btn_start_ml_labeling).setOnClickListener {
-            downloadImagesFromRemoteList {
-                labelFiles(it)
+            val dlDir = downloadDir!!
+            val imageList = dlDir.listFiles { _, name: String? ->
+                name?.toLowerCase(Locale.US)?.endsWith(".jpg") ?: false
             }
+
+            labelFiles(imageList.toList())
         }
 
         view.findViewById<View>(R.id.btn_start_batch_encrypt).setOnClickListener {
@@ -176,13 +181,11 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
     @Synchronized
     private fun downloadImagesFromRemoteList(onDownloadcomplete: (List<File>) -> Unit) {
-        val downloadDir = File(encryptedImageDir, "downloads")
-
-        if (!downloadDir.mkdir() && !downloadDir.exists()) {
-            throw RuntimeException("Failed to create download dir for images: " + downloadDir.absolutePath)
+        if (!downloadDir!!.mkdir() && !downloadDir!!.exists()) {
+            throw RuntimeException("Failed to create download dir for images: " + downloadDir!!.absolutePath)
         }
 
-        val downloader = TestImageDownloader(downloadDir)
+        val downloader = TestImageDownloader(downloadDir!!)
 
         val listUrl = URL(getString(R.string.image_list_url))
 
