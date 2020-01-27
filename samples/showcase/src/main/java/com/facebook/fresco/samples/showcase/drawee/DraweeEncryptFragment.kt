@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -75,8 +76,11 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         pipeline = Fresco.getImagePipeline()
 
-        encryptedImageDir = Preconditions.checkNotNull<Context>(context).getExternalFilesDir(null)
+        //encryptedImageDir = Preconditions.checkNotNull<Context>(context).getExternalFilesDir(null)
+        encryptedImageDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "pdk-showcase")
         downloadDir = File(encryptedImageDir, "downloads")
+        downloadDir!!.mkdirs()
+        FLog.d(TAG, "downloadDir=$downloadDir, exists=${downloadDir!!.exists()}")
 
         mUri = sampleUris().createSampleUri()
         mDraweeEncryptView = view.findViewById(R.id.drawee_view)
@@ -227,7 +231,14 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         }
     }
 
-    private fun encryptImage(image: File) {
+    private fun encryptImage(image: File, callback: (encryptedFile: File) -> Unit) {
+        val outputFile = image.parentFile.resolve("${image.nameWithoutExtension}_encrypted.${image.extension}")
+
+        if (outputFile.exists()) {
+            FLog.d(TAG, "Encrypted image ${outputFile.name} already exists, skipping encryption")
+            return
+        }
+
         pipeline!!.clearCaches()
         setNewKey(true)
         val fileUri = Uri.fromFile(image)
@@ -241,37 +252,40 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
         val factory = NativeImageEncryptorFactory.getNativeImageEncryptorFactory()
 
-        val outputFile = image.parentFile.resolve("${image.nameWithoutExtension}_encrypted.${image.extension}")
 
         FLog.d(TAG, "encryptImage() writing to output file: $outputFile")
-        dataSourceToDisk(dataSource, mDraweeEncryptView, factory, null, outputFile)
+        dataSourceToDisk(dataSource, null, factory, null, outputFile, callback)
     }
 
     private fun encryptFiles(files: List<File>) {
         GlobalScope.launch(Dispatchers.Main) {
             // Process only one image at a time
             for (imageFile in files) {
+                scanFile(imageFile.absolutePath)
                 if (imageFile.nameWithoutExtension.contains("encrypted")) {
                     continue
                 }
                 withContext(Dispatchers.IO) {
-                    scanFile(imageFile.absolutePath)
                     FLog.d(TAG, "Encrypting image $imageFile")
-                    encryptImage(imageFile)
+                    encryptImage(imageFile) {
+                        val fileSizeCsvRow = "CSV: ${imageFile.name},${imageFile.length()},${it.length()},${it.length() * 1.0 / imageFile.length()}"
+                        FLog.d(TAG, fileSizeCsvRow)
+                    }
                 }
             }
         }
     }
 
     private fun scanFile(path: String) {
-        MediaScannerConnection.scanFile(context, arrayOf(path), null, msClient)
+        MediaScannerConnection.scanFile(context!!.applicationContext, arrayOf(path), null, msClient)
     }
 
     private fun dataSourceToDisk(dataSource: DataSource<CloseableReference<PooledByteBuffer>>,
                                  viewToDisplayWith: SimpleDraweeView?,
                                  encryptorFactory: ImageEncryptorFactory?,
                                  decryptorFactory: ImageDecryptorFactory?,
-                                 outputFile: File? = null) {
+                                 outputFile: File? = null,
+                                 callback: ((encryptedFile: File) -> Unit)? = null) {
         val executor = DefaultExecutorSupplier(1).forBackgroundTasks()
 
         val dataSubscriber = object : BaseDataSubscriber<CloseableReference<PooledByteBuffer>>() {
@@ -320,10 +334,17 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
                     if (outputImageFile != null) {
                         lastSavedImage = Uri.parse(outputImageFile.toURI().toString())
-                        val encryptedImageRequest = ImageRequestBuilder.newBuilderWithSource(lastSavedImage)
-                                .setImageDecodeOptions(ImageDecodeOptionsBuilder.newBuilder().build())
-                                .build()
-                        viewToDisplayWith?.setImageRequest(encryptedImageRequest)
+
+                        if (viewToDisplayWith != null) {
+                            val encryptedImageRequest = ImageRequestBuilder.newBuilderWithSource(lastSavedImage)
+                                    .setImageDecodeOptions(ImageDecodeOptionsBuilder.newBuilder().build())
+                                    .build()
+                            viewToDisplayWith.setImageRequest(encryptedImageRequest)
+                        }
+
+                        if (callback != null) {
+                            callback(outputImageFile)
+                        }
                     }
                 }
             }
