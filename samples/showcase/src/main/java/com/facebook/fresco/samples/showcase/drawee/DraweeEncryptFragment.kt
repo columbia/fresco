@@ -118,6 +118,10 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
                 encryptFiles(it)
             }
         }
+
+        view.findViewById<View>(R.id.btn_start_batch_decrypt).setOnClickListener {
+            decryptFiles(downloadDir!!.listFiles().toList())
+        }
     }
 
     private fun setNewKey(useStaticKey: Boolean = true) {
@@ -167,7 +171,8 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
     private fun setDecryptFromUrlOptions() {
         pipeline!!.clearCaches()
-        mUri = Uri.parse("")
+        setNewKey(true)
+        mUri = Uri.parse("http://r/325360954_a43b5b2b99_o_encrypted.jpg")
         val imageRequest = ImageRequestBuilder.newBuilderWithSource(mUri)
                 .setDecrypt(true)
                 .setJpegCryptoKey(lastKey)
@@ -270,6 +275,48 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
                     encryptImage(imageFile) {
                         val fileSizeCsvRow = "CSV: ${imageFile.name},${imageFile.length()},${it.length()},${it.length() * 1.0 / imageFile.length()}"
                         FLog.d(TAG, fileSizeCsvRow)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun decryptImage(image: File, callback: (encryptedFile: File) -> Unit) {
+        val outputFile = image.parentFile.resolve("${image.nameWithoutExtension.replace("encrypted", "decrypted")}.${image.extension}")
+
+        if (outputFile.exists()) {
+            FLog.d(TAG, "Decrypted image ${outputFile.name} already exists, skipping decryption")
+            return
+        }
+
+        pipeline!!.clearCaches()
+        setNewKey(true)
+        val fileUri = Uri.fromFile(image)
+        val imageRequest = ImageRequestBuilder.newBuilderWithSource(fileUri)
+                .setDecrypt(true)
+                .setJpegCryptoKey(lastKey)
+                .setImageDecodeOptions(ImageDecodeOptionsBuilder.newBuilder().build())
+                .build()
+
+        val dataSource = pipeline!!.fetchEncodedImage(imageRequest, this)
+
+        val factory = NativeImageDecryptorFactory.getNativeImageDecryptorFactory()
+
+        FLog.d(TAG, "decryptImage() writing to output file: $outputFile")
+        dataSourceToDisk(dataSource, null, null, factory, outputFile, callback)
+    }
+
+    private fun decryptFiles(files: List<File>) {
+        GlobalScope.launch(Dispatchers.Main) {
+            // Process only one image at a time
+            for (imageFile in files) {
+                if (!imageFile.nameWithoutExtension.contains("encrypted")) {
+                    continue
+                }
+                withContext(Dispatchers.IO) {
+                    FLog.d(TAG, "Decrypting image $imageFile")
+                    decryptImage(imageFile) {
+                        FLog.d(TAG, "Finished decrypting image $imageFile")
                     }
                 }
             }

@@ -57,6 +57,12 @@
             android:text="@string/drawee_encrypt_start_batch_encrypt" />
 
         <Button
+            android:id="@+id/btn_start_batch_decrypt"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/drawee_encrypt_start_batch_decrypt" />
+
+        <Button
             android:id="@+id/btn_decrypt_image_disk"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
