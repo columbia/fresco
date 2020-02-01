@@ -334,7 +334,11 @@ static void decryptMCUs(
         unsigned int dest_pos = chaos_op[block_i].chaos_pos;
         JCOEFPTR dct_block = mcu_buff[0][x];
 
-        std::copy(chaos_op[dest_pos].dcts, chaos_op[dest_pos].dcts + DCTSIZE2, dct_block);
+        //std::copy(chaos_op[dest_pos].dcts, chaos_op[dest_pos].dcts + DCTSIZE2, dct_block);
+        // Skip the DC coefficient
+        for (int i = 1; i < DCTSIZE2; i++) {
+          dct_block[i] = chaos_op[dest_pos].dcts[i];
+        }
         block_i++;
       }
       LOGD("decryptDCsACsMCUs finished swap for component %d", comp_i);
