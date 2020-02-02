@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <setjmp.h>
+#include <math.h>
 
 #include <jni.h>
 #include <jpeglib.h>
@@ -791,6 +792,114 @@ teardown:
 
 }
 
+/////////////
+/////////////
+/////////////
+#define BLOCK_WIDTH 8
+#define BLOCK_HEIGHT 8
+#define PIXELS_PER_BLOCK 64
+
+struct rgb_block {
+  char red[BLOCK_HEIGHT][BLOCK_WIDTH];
+  char blue[BLOCK_HEIGHT][BLOCK_WIDTH];
+  char green[BLOCK_HEIGHT][BLOCK_WIDTH];
+};
+
+static void do_encrypt_etc(j_decompress_ptr dinfo) {
+  JSAMPARRAY buffer;            /* Output row buffer */
+  int row_stride;               /* physical row width in output buffer */
+  struct rgb_block **rgb_copy;
+  unsigned int rows;
+  unsigned int columns;
+
+  // make an output work buffer of the right size.
+  // JSAMPLEs per row in output buffer
+  row_stride = dinfo->output_width * dinfo->output_components;
+
+  // Make a sample array that will go away when done with image
+  buffer = (*dinfo->mem->alloc_sarray)((j_common_ptr) dinfo, JPOOL_IMAGE, row_stride, 8);
+
+  rows = ceil(dinfo->output_width / PIXELS_PER_BLOCK);
+  columns = ceil(dinfo->output_height / PIXELS_PER_BLOCK);
+
+  rgb_copy = new struct rgb_block *[rows];
+
+  for (int i = 0; i < rows; ++i)
+    rgb_copy[i] = new rgb_block[columns];
+
+  // Copy decompressed RGB values to our buffer (TODO: copy to the scrambled position in rgb_copy)
+  while (dinfo->output_scanline < dinfo->output_height) {
+    unsigned char *pixels;
+
+    jpeg_read_scanlines(dinfo, buffer, 1);
+
+    pixels = (unsigned char *) buffer[0];
+
+    for (int i = 0; i < row_stride; i++) {
+      int block_x = i / BLOCK_WIDTH;
+      int block_y = dinfo->output_scanline / BLOCK_HEIGHT;
+      int pixel_x = i % BLOCK_WIDTH;
+      int pixel_y = dinfo->output_scanline % BLOCK_HEIGHT;
+
+      rgb_copy[block_y][block_x].red[pixel_y][pixel_x] = *pixels++;
+      rgb_copy[block_y][block_x].blue[pixel_y][pixel_x] = *pixels++;
+      rgb_copy[block_y][block_x].green[pixel_y][pixel_x] = *pixels++;
+    }
+  }
+
+  // Copied RGB va
+
+
+  for (int i = 0; i < rows; ++i)
+    delete[] rgb_copy[i];
+
+  delete[] rgb_copy;
+}
+
+static void encrypt_etc(
+    JNIEnv *env,
+    jobject is,
+    jobject os,
+    jstring x_0_jstr,
+    jstring mu_jstr) {
+  JpegInputStreamWrapper is_wrapper{env, is};
+  JpegOutputStreamWrapper os_wrapper{env, os};
+  JpegErrorHandler error_handler{env};
+  struct jpeg_source_mgr& source = is_wrapper.public_fields;
+  struct jpeg_destination_mgr& destination = os_wrapper.public_fields;
+
+  if (setjmp(error_handler.setjmpBuffer)) {
+    return;
+  }
+
+  // prepare decompress struct
+  struct jpeg_decompress_struct dinfo;
+  initDecompressStruct(dinfo, error_handler, source);
+  dinfo.out_color_space = JCS_EXT_RGBX;
+
+  jpeg_start_decompress(&dinfo);
+
+  do_encrypt_etc(&dinfo);
+
+  // Now ready to write the output compressed JPEG
+  // create compress struct
+  struct jpeg_compress_struct cinfo;
+  initCompressStruct(cinfo, dinfo, error_handler, destination);
+
+  // initialize with default params, then copy the ones needed for lossless transcoding
+  jpeg_copy_critical_parameters(&dinfo, &cinfo);
+  jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
+
+  LOGD("encrypt_etc finished");
+
+teardown:
+  jpeg_finish_compress(&cinfo);
+  jpeg_finish_decompress(&dinfo);
+  jpeg_destroy_compress(&cinfo);
+  jpeg_destroy_decompress(&dinfo);
+}
+
+
 void encryptJpeg(
     JNIEnv *env,
     jobject is,
@@ -798,7 +907,9 @@ void encryptJpeg(
     jstring x_0_jstr,
     jstring mu_jstr) {
   //encryptJpegByRowAndColumn(env, is, os, x_0_jstr, mu_jstr);
-  encryptDCsACsMCUs(env, is, os, x_0_jstr, mu_jstr);
+  //encryptDCsACsMCUs(env, is, os, x_0_jstr, mu_jstr);
+
+  encrypt_etc(env, is, os, x_0_jstr, mu_jstr);
 }
 
 } } } }
