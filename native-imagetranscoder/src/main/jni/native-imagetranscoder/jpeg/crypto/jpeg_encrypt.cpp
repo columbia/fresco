@@ -805,41 +805,45 @@ struct rgb_block {
   char green[BLOCK_HEIGHT][BLOCK_WIDTH];
 };
 
-static void do_encrypt_etc(j_decompress_ptr dinfo) {
+static struct rgb_block **do_encrypt_etc(j_decompress_ptr dinfo,
+      unsigned int rows,
+      unsigned int columns) {
   JSAMPARRAY buffer;            /* Output row buffer */
   int row_stride;               /* physical row width in output buffer */
   struct rgb_block **rgb_copy;
-  unsigned int rows;
-  unsigned int columns;
 
   // make an output work buffer of the right size.
   // JSAMPLEs per row in output buffer
   row_stride = dinfo->output_width * dinfo->output_components;
 
   // Make a sample array that will go away when done with image
-  buffer = (*dinfo->mem->alloc_sarray)((j_common_ptr) dinfo, JPOOL_IMAGE, row_stride, 8);
+  buffer = (*dinfo->mem->alloc_sarray)((j_common_ptr) dinfo, JPOOL_IMAGE, row_stride, 1);
 
-  rows = ceil(dinfo->output_width / PIXELS_PER_BLOCK);
-  columns = ceil(dinfo->output_height / PIXELS_PER_BLOCK);
-
+  // initialize rgb_copy
   rgb_copy = new struct rgb_block *[rows];
-
   for (int i = 0; i < rows; ++i)
     rgb_copy[i] = new rgb_block[columns];
+
+  LOGD("do_encrypt_etc rows=%d (height=%d), columns=%d (width=%d) / row_stride=%d", rows, dinfo->output_height, columns, dinfo->output_width, row_stride);
 
   // Copy decompressed RGB values to our buffer (TODO: copy to the scrambled position in rgb_copy)
   while (dinfo->output_scanline < dinfo->output_height) {
     unsigned char *pixels;
+    int block_y;
+    int pixel_y;
 
     jpeg_read_scanlines(dinfo, buffer, 1);
 
     pixels = (unsigned char *) buffer[0];
+    block_y = dinfo->output_scanline / BLOCK_HEIGHT;
+    pixel_y = dinfo->output_scanline % BLOCK_HEIGHT;
 
     for (int i = 0; i < row_stride; i++) {
-      int block_x = i / BLOCK_WIDTH;
-      int block_y = dinfo->output_scanline / BLOCK_HEIGHT;
-      int pixel_x = i % BLOCK_WIDTH;
-      int pixel_y = dinfo->output_scanline % BLOCK_HEIGHT;
+      int block_x = i / (dinfo->output_components * BLOCK_WIDTH); // buffer layout is R,G,B,R,G,B,R,G,B,...
+      int pixel_x = (i / dinfo->output_components) % BLOCK_WIDTH;
+
+      // if (block_x >= columns || block_y >= rows || pixel_x >= BLOCK_WIDTH || pixel_y >= BLOCK_HEIGHT)
+        //LOGD("do_encrypt_etc (%d, %d) / (%d, %d)", block_x, block_y, pixel_x, pixel_y);
 
       rgb_copy[block_y][block_x].red[pixel_y][pixel_x] = *pixels++;
       rgb_copy[block_y][block_x].blue[pixel_y][pixel_x] = *pixels++;
@@ -847,13 +851,9 @@ static void do_encrypt_etc(j_decompress_ptr dinfo) {
     }
   }
 
-  // Copied RGB va
+  LOGD("do_encrypt_etc finished");
 
-
-  for (int i = 0; i < rows; ++i)
-    delete[] rgb_copy[i];
-
-  delete[] rgb_copy;
+  return rgb_copy;
 }
 
 static void encrypt_etc(
@@ -867,6 +867,9 @@ static void encrypt_etc(
   JpegErrorHandler error_handler{env};
   struct jpeg_source_mgr& source = is_wrapper.public_fields;
   struct jpeg_destination_mgr& destination = os_wrapper.public_fields;
+  struct rgb_block **rgb_copy;
+  unsigned int rows;
+  unsigned int columns;
 
   if (setjmp(error_handler.setjmpBuffer)) {
     return;
@@ -879,7 +882,9 @@ static void encrypt_etc(
 
   jpeg_start_decompress(&dinfo);
 
-  do_encrypt_etc(&dinfo);
+  rows = ceil(dinfo.output_height / BLOCK_HEIGHT) + 1;
+  columns = ceil(dinfo.output_width / BLOCK_WIDTH) + 1;
+  rgb_copy = do_encrypt_etc(&dinfo, rows, columns);
 
   // Now ready to write the output compressed JPEG
   // create compress struct
@@ -893,6 +898,10 @@ static void encrypt_etc(
   LOGD("encrypt_etc finished");
 
 teardown:
+  for (int i = 0; i < rows; ++i)
+    delete[] rgb_copy[i];
+
+  delete[] rgb_copy;
   jpeg_finish_compress(&cinfo);
   jpeg_finish_decompress(&dinfo);
   jpeg_destroy_compress(&cinfo);
