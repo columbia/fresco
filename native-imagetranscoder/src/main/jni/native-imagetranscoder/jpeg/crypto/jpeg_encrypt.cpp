@@ -838,7 +838,7 @@ static struct rgb_block **do_encrypt_etc(j_decompress_ptr dinfo,
     block_y = dinfo->output_scanline / BLOCK_HEIGHT;
     pixel_y = dinfo->output_scanline % BLOCK_HEIGHT;
 
-    for (int i = 0; i < row_stride; i++) {
+    for (int i = 0; i < row_stride; i += dinfo->output_components) {
       int block_x = i / (dinfo->output_components * BLOCK_WIDTH); // buffer layout is R,G,B,R,G,B,R,G,B,...
       int pixel_x = (i / dinfo->output_components) % BLOCK_WIDTH;
 
@@ -848,6 +848,7 @@ static struct rgb_block **do_encrypt_etc(j_decompress_ptr dinfo,
       rgb_copy[block_y][block_x].red[pixel_y][pixel_x] = *pixels++;
       rgb_copy[block_y][block_x].blue[pixel_y][pixel_x] = *pixels++;
       rgb_copy[block_y][block_x].green[pixel_y][pixel_x] = *pixels++;
+      pixels++; // We are using RGBX so there's an extra byte
     }
   }
 
@@ -895,24 +896,26 @@ static void encrypt_etc(
   struct jpeg_compress_struct cinfo;
   initCompressStruct(cinfo, dinfo, error_handler, destination);
   // initialize with default params, then copy the ones needed for lossless transcoding
-  jpeg_copy_critical_parameters(&dinfo, &cinfo);
+  //jpeg_copy_critical_parameters(&dinfo, &cinfo);
   //jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
   cinfo.jpeg_color_space = JCS_GRAYSCALE;
   cinfo.in_color_space = JCS_GRAYSCALE;
   cinfo.input_components = 1;
   cinfo.num_components = 1;
   jpeg_set_defaults(&cinfo);
+  jpeg_set_quality(&cinfo, 85, TRUE);
   jpeg_start_compress(&cinfo, TRUE);
 
   // Now write the scrambled RGB channels
   row_stride = cinfo.image_width; /* JSAMPLEs per row in image_buffer */
 
-  r_row = (JSAMPLE *) malloc(row_stride * sizeof(JSAMPLE));
+  r_row = (JSAMPLE *) malloc(row_stride * sizeof(JSAMPLE) * 3);
   if (r_row == NULL) {
     LOGE("encrypt_etc failed to allocate r_row");
     goto teardown;
   }
 
+  LOGD("encrypt_etc row_stride=%d, num_components=%d", row_stride, cinfo.num_components);
   while (cinfo.next_scanline < cinfo.image_height) {
     JSAMPROW row_pointer[row_stride];
     int block_y = cinfo.next_scanline / BLOCK_HEIGHT;
@@ -923,6 +926,17 @@ static void encrypt_etc(
       int pixel_x = i % BLOCK_WIDTH;
 
       r_row[i] = rgb_scrambled[block_y][block_x].red[pixel_y][pixel_x];
+
+      //if (i > (row_stride / 4))
+      //  r_row[i] = 255;
+
+      /*
+      if (i % 2 == 0) {
+        r_row[i] = 255;
+      } else {
+        r_row[i] = 0;
+      }
+      */
     }
 
     row_pointer[0] = r_row;
