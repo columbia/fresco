@@ -851,6 +851,8 @@ static struct rgb_block **do_encrypt_etc(j_decompress_ptr dinfo,
     }
   }
 
+  // Now scramble the copied RGB values
+
   LOGD("do_encrypt_etc finished");
 
   return rgb_copy;
@@ -867,9 +869,11 @@ static void encrypt_etc(
   JpegErrorHandler error_handler{env};
   struct jpeg_source_mgr& source = is_wrapper.public_fields;
   struct jpeg_destination_mgr& destination = os_wrapper.public_fields;
-  struct rgb_block **rgb_copy;
+  struct rgb_block **rgb_scrambled;
   unsigned int rows;
   unsigned int columns;
+  unsigned int row_stride;
+  JSAMPLE *r_row; // JSAMPLE is char
 
   if (setjmp(error_handler.setjmpBuffer)) {
     return;
@@ -884,24 +888,55 @@ static void encrypt_etc(
 
   rows = ceil(dinfo.output_height / BLOCK_HEIGHT) + 1;
   columns = ceil(dinfo.output_width / BLOCK_WIDTH) + 1;
-  rgb_copy = do_encrypt_etc(&dinfo, rows, columns);
+  rgb_scrambled = do_encrypt_etc(&dinfo, rows, columns);
 
   // Now ready to write the output compressed JPEG
   // create compress struct
   struct jpeg_compress_struct cinfo;
   initCompressStruct(cinfo, dinfo, error_handler, destination);
-
   // initialize with default params, then copy the ones needed for lossless transcoding
   jpeg_copy_critical_parameters(&dinfo, &cinfo);
-  jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
+  //jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
+  cinfo.jpeg_color_space = JCS_GRAYSCALE;
+  cinfo.in_color_space = JCS_GRAYSCALE;
+  cinfo.input_components = 1;
+  cinfo.num_components = 1;
+  jpeg_set_defaults(&cinfo);
+  jpeg_start_compress(&cinfo, TRUE);
+
+  // Now write the scrambled RGB channels
+  row_stride = cinfo.image_width; /* JSAMPLEs per row in image_buffer */
+
+  r_row = (JSAMPLE *) malloc(row_stride * sizeof(JSAMPLE));
+  if (r_row == NULL) {
+    LOGE("encrypt_etc failed to allocate r_row");
+    goto teardown;
+  }
+
+  while (cinfo.next_scanline < cinfo.image_height) {
+    JSAMPROW row_pointer[row_stride];
+    int block_y = cinfo.next_scanline / BLOCK_HEIGHT;
+    int pixel_y = cinfo.next_scanline % BLOCK_HEIGHT;
+
+    for (int i = 0; i < row_stride; i++) {
+      int block_x = i / BLOCK_WIDTH;
+      int pixel_x = i % BLOCK_WIDTH;
+
+      r_row[i] = rgb_scrambled[block_y][block_x].red[pixel_y][pixel_x];
+    }
+
+    row_pointer[0] = r_row;
+
+    jpeg_write_scanlines(&cinfo, row_pointer, 1);
+  }
 
   LOGD("encrypt_etc finished");
 
 teardown:
   for (int i = 0; i < rows; ++i)
-    delete[] rgb_copy[i];
+    delete[] rgb_scrambled[i];
 
-  delete[] rgb_copy;
+  delete[] rgb_scrambled;
   jpeg_finish_compress(&cinfo);
   jpeg_finish_decompress(&dinfo);
   jpeg_destroy_compress(&cinfo);
