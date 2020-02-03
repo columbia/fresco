@@ -839,7 +839,7 @@ static struct rgb_block **do_encrypt_etc(j_decompress_ptr dinfo,
     pixel_y = dinfo->output_scanline % BLOCK_HEIGHT;
 
     for (int i = 0; i < row_stride; i += dinfo->output_components) {
-      int block_x = i / (dinfo->output_components * BLOCK_WIDTH); // buffer layout is R,G,B,R,G,B,R,G,B,...
+      int block_x = i / (dinfo->output_components * BLOCK_WIDTH); // buffer is R,G,B,X,R,G,B,X,...
       int pixel_x = (i / dinfo->output_components) % BLOCK_WIDTH;
 
       // if (block_x >= columns || block_y >= rows || pixel_x >= BLOCK_WIDTH || pixel_y >= BLOCK_HEIGHT)
@@ -859,22 +859,49 @@ static struct rgb_block **do_encrypt_etc(j_decompress_ptr dinfo,
   return rgb_copy;
 }
 
+static void initialize_grayscale_compress(struct jpeg_compress_struct& cinfo,
+    struct jpeg_decompress_struct& dinfo,
+    JpegErrorHandler& error_handler,
+    struct jpeg_destination_mgr& destination) {
+  initCompressStruct(cinfo, dinfo, error_handler, destination);
+  // initialize with default params, then copy the ones needed for lossless transcoding
+  //jpeg_copy_critical_parameters(&dinfo, &cinfo);
+  //jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
+  cinfo.jpeg_color_space = JCS_GRAYSCALE;
+  cinfo.in_color_space = JCS_GRAYSCALE;
+  cinfo.input_components = 1;
+  cinfo.num_components = 1;
+  jpeg_set_defaults(&cinfo);
+  jpeg_set_quality(&cinfo, 85, TRUE);
+}
+
 static void encrypt_etc(
     JNIEnv *env,
     jobject is,
-    jobject os,
+    jobject os_red,
+    jobject os_green,
+    jobject os_blue,
     jstring x_0_jstr,
     jstring mu_jstr) {
   JpegInputStreamWrapper is_wrapper{env, is};
-  JpegOutputStreamWrapper os_wrapper{env, os};
+  JpegOutputStreamWrapper os_wrapper_red{env, os_red};
+  JpegOutputStreamWrapper os_wrapper_green{env, os_green};
+  JpegOutputStreamWrapper os_wrapper_blue{env, os_blue};
   JpegErrorHandler error_handler{env};
   struct jpeg_source_mgr& source = is_wrapper.public_fields;
-  struct jpeg_destination_mgr& destination = os_wrapper.public_fields;
+  struct jpeg_destination_mgr& dest_red = os_wrapper_red.public_fields;
+  struct jpeg_destination_mgr& dest_green = os_wrapper_green.public_fields;
+  struct jpeg_destination_mgr& dest_blue = os_wrapper_blue.public_fields;
   struct rgb_block **rgb_scrambled;
+  struct jpeg_compress_struct cinfo_red;
+  struct jpeg_compress_struct cinfo_green;
+  struct jpeg_compress_struct cinfo_blue;
   unsigned int rows;
   unsigned int columns;
   unsigned int row_stride;
   JSAMPLE *r_row; // JSAMPLE is char
+  JSAMPLE *g_row; // JSAMPLE is char
+  JSAMPLE *b_row; // JSAMPLE is char
 
   if (setjmp(error_handler.setjmpBuffer)) {
     return;
@@ -893,55 +920,45 @@ static void encrypt_etc(
 
   // Now ready to write the output compressed JPEG
   // create compress struct
-  struct jpeg_compress_struct cinfo;
-  initCompressStruct(cinfo, dinfo, error_handler, destination);
-  // initialize with default params, then copy the ones needed for lossless transcoding
-  //jpeg_copy_critical_parameters(&dinfo, &cinfo);
-  //jcopy_markers_execute(&dinfo, &cinfo, JCOPYOPT_ALL);
-  cinfo.jpeg_color_space = JCS_GRAYSCALE;
-  cinfo.in_color_space = JCS_GRAYSCALE;
-  cinfo.input_components = 1;
-  cinfo.num_components = 1;
-  jpeg_set_defaults(&cinfo);
-  jpeg_set_quality(&cinfo, 85, TRUE);
-  jpeg_start_compress(&cinfo, TRUE);
+  initialize_grayscale_compress(cinfo_red, dinfo, error_handler, dest_red);
+  initialize_grayscale_compress(cinfo_green, dinfo, error_handler, dest_green);
+  initialize_grayscale_compress(cinfo_blue, dinfo, error_handler, dest_blue);
+  jpeg_start_compress(&cinfo_red, TRUE);
+  jpeg_start_compress(&cinfo_green, TRUE);
+  jpeg_start_compress(&cinfo_blue, TRUE);
 
   // Now write the scrambled RGB channels
-  row_stride = cinfo.image_width; /* JSAMPLEs per row in image_buffer */
+  row_stride = cinfo_red.image_width; /* JSAMPLEs per row in image_buffer */
 
   r_row = (JSAMPLE *) malloc(row_stride * sizeof(JSAMPLE) * 3);
-  if (r_row == NULL) {
-    LOGE("encrypt_etc failed to allocate r_row");
+  g_row = (JSAMPLE *) malloc(row_stride * sizeof(JSAMPLE) * 3);
+  b_row = (JSAMPLE *) malloc(row_stride * sizeof(JSAMPLE) * 3);
+  if (r_row == NULL || g_row == NULL || b_row == NULL) {
+    LOGE("encrypt_etc failed to allocate r_row / g_row / b_row");
     goto teardown;
   }
 
-  LOGD("encrypt_etc row_stride=%d, num_components=%d", row_stride, cinfo.num_components);
-  while (cinfo.next_scanline < cinfo.image_height) {
+  LOGD("encrypt_etc row_stride=%d, num_components=%d", row_stride, cinfo_red.num_components);
+  while (cinfo_red.next_scanline < cinfo_red.image_height) {
     JSAMPROW row_pointer[row_stride];
-    int block_y = cinfo.next_scanline / BLOCK_HEIGHT;
-    int pixel_y = cinfo.next_scanline % BLOCK_HEIGHT;
+    int block_y = cinfo_red.next_scanline / BLOCK_HEIGHT;
+    int pixel_y = cinfo_red.next_scanline % BLOCK_HEIGHT;
 
     for (int i = 0; i < row_stride; i++) {
       int block_x = i / BLOCK_WIDTH;
       int pixel_x = i % BLOCK_WIDTH;
 
       r_row[i] = rgb_scrambled[block_y][block_x].red[pixel_y][pixel_x];
-
-      //if (i > (row_stride / 4))
-      //  r_row[i] = 255;
-
-      /*
-      if (i % 2 == 0) {
-        r_row[i] = 255;
-      } else {
-        r_row[i] = 0;
-      }
-      */
+      g_row[i] = rgb_scrambled[block_y][block_x].green[pixel_y][pixel_x];
+      b_row[i] = rgb_scrambled[block_y][block_x].blue[pixel_y][pixel_x];
     }
 
     row_pointer[0] = r_row;
-
-    jpeg_write_scanlines(&cinfo, row_pointer, 1);
+    jpeg_write_scanlines(&cinfo_red, row_pointer, 1);
+    row_pointer[0] = g_row;
+    jpeg_write_scanlines(&cinfo_green, row_pointer, 1);
+    row_pointer[0] = b_row;
+    jpeg_write_scanlines(&cinfo_blue, row_pointer, 1);
   }
 
   LOGD("encrypt_etc finished");
@@ -951,10 +968,20 @@ teardown:
     delete[] rgb_scrambled[i];
 
   delete[] rgb_scrambled;
-  jpeg_finish_compress(&cinfo);
+  if (r_row != NULL)
+    free(r_row);
+  if (g_row != NULL)
+    free(g_row);
+  if (b_row != NULL)
+    free(b_row);
   jpeg_finish_decompress(&dinfo);
-  jpeg_destroy_compress(&cinfo);
   jpeg_destroy_decompress(&dinfo);
+  jpeg_finish_compress(&cinfo_red);
+  jpeg_finish_compress(&cinfo_green);
+  jpeg_finish_compress(&cinfo_blue);
+  jpeg_destroy_compress(&cinfo_red);
+  jpeg_destroy_compress(&cinfo_green);
+  jpeg_destroy_compress(&cinfo_blue);
 }
 
 
@@ -965,9 +992,18 @@ void encryptJpeg(
     jstring x_0_jstr,
     jstring mu_jstr) {
   //encryptJpegByRowAndColumn(env, is, os, x_0_jstr, mu_jstr);
-  //encryptDCsACsMCUs(env, is, os, x_0_jstr, mu_jstr);
+  encryptDCsACsMCUs(env, is, os, x_0_jstr, mu_jstr);
+}
 
-  encrypt_etc(env, is, os, x_0_jstr, mu_jstr);
+void encryptJpegEtc(
+    JNIEnv *env,
+    jobject is,
+    jobject os_red,
+    jobject os_green,
+    jobject os_blue,
+    jstring x_0_jstr,
+    jstring mu_jstr) {
+  encrypt_etc(env, is, os_red, os_green, os_blue, x_0_jstr, mu_jstr);
 }
 
 } } } }

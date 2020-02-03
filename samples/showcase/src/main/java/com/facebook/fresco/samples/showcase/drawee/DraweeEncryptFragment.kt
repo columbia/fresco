@@ -115,7 +115,8 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
         view.findViewById<View>(R.id.btn_start_batch_encrypt).setOnClickListener {
             downloadImagesFromRemoteList {
-                encryptFiles(it)
+                //encryptFiles(it)
+                encryptEtcFiles(it)
             }
         }
 
@@ -257,9 +258,39 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
         val factory = NativeImageEncryptorFactory.getNativeImageEncryptorFactory()
 
-
         FLog.d(TAG, "encryptImage() writing to output file: $outputFile")
-        dataSourceToDisk(dataSource, null, factory, null, outputFile, callback)
+        dataSourceToDisk(dataSource, null, factory, null, outputFile, null, null, callback)
+    }
+
+    private fun encryptEtcImage(image: File, callback: (encryptedFile: File) -> Unit) {
+        val outputFileRed = image.parentFile.resolve("${image.nameWithoutExtension}_encrypted_red.${image.extension}")
+        val outputFileGreen = image.parentFile.resolve("${image.nameWithoutExtension}_encrypted_green.${image.extension}")
+        val outputFileBlue = image.parentFile.resolve("${image.nameWithoutExtension}_encrypted_blue.${image.extension}")
+
+        if (outputFileRed.exists()) {
+            FLog.d(TAG, "Encrypted image ${outputFileRed.name} already exists, skipping encryption")
+            return
+        }
+
+        pipeline!!.clearCaches()
+        setNewKey(true)
+        val fileUri = Uri.fromFile(image)
+        val imageRequest = ImageRequestBuilder.newBuilderWithSource(fileUri)
+                .setEncryptEtc(true)
+                .setJpegCryptoKey(lastKey)
+                .setImageDecodeOptions(ImageDecodeOptionsBuilder.newBuilder().build())
+                .build()
+
+        val dataSource = pipeline!!.fetchEncodedImage(imageRequest, this)
+
+        val factory = NativeImageEncryptorFactory.getNativeImageEncryptorFactory()
+
+        FLog.d(TAG, "encryptEtcImage() writing to output file: $outputFileRed / $outputFileGreen / $outputFileBlue")
+        dataSourceToDisk(dataSource, null, factory, null,
+                outputFileRed,
+                outputFileGreen,
+                outputFileBlue,
+                callback)
     }
 
     private fun encryptFiles(files: List<File>) {
@@ -273,6 +304,25 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
                 withContext(Dispatchers.IO) {
                     FLog.d(TAG, "Encrypting image $imageFile")
                     encryptImage(imageFile) {
+                        val fileSizeCsvRow = "CSV: ${imageFile.name},${imageFile.length()},${it.length()},${it.length() * 1.0 / imageFile.length()}"
+                        FLog.d(TAG, fileSizeCsvRow)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun encryptEtcFiles(files: List<File>) {
+        GlobalScope.launch(Dispatchers.Main) {
+            // Process only one image at a time
+            for (imageFile in files) {
+                scanFile(imageFile.absolutePath)
+                if (imageFile.nameWithoutExtension.contains("encrypted")) {
+                    continue
+                }
+                withContext(Dispatchers.IO) {
+                    FLog.d(TAG, "Encrypting etc image $imageFile")
+                    encryptEtcImage(imageFile) {
                         val fileSizeCsvRow = "CSV: ${imageFile.name},${imageFile.length()},${it.length()},${it.length() * 1.0 / imageFile.length()}"
                         FLog.d(TAG, fileSizeCsvRow)
                     }
@@ -303,7 +353,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         val factory = NativeImageDecryptorFactory.getNativeImageDecryptorFactory()
 
         FLog.d(TAG, "decryptImage() writing to output file: $outputFile")
-        dataSourceToDisk(dataSource, null, null, factory, outputFile, callback)
+        dataSourceToDisk(dataSource, null, null, factory, outputFile, null, null, callback)
     }
 
     private fun decryptFiles(files: List<File>) {
@@ -332,6 +382,8 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
                                  encryptorFactory: ImageEncryptorFactory?,
                                  decryptorFactory: ImageDecryptorFactory?,
                                  outputFile: File? = null,
+                                 outputFileGreen: File? = null,
+                                 outputFileBlue: File? = null,
                                  callback: ((encryptedFile: File) -> Unit)? = null) {
         val executor = DefaultExecutorSupplier(1).forBackgroundTasks()
 
@@ -347,20 +399,37 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
                 val ref = dataSource.result
                 if (ref != null) {
                     var outputImageFile: File? = null
+
                     try {
                         val encodedImage = EncodedImage(ref)
                         val `is` = encodedImage.inputStream
 
                         try {
-                            outputImageFile = outputFile
-                                    ?: File.createTempFile(mUri!!.lastPathSegment, ".jpg", encryptedImageDir)
+                            val uriAsFile = File(mUri!!.lastPathSegment)
+                            outputImageFile = outputFile ?: File.createTempFile(uriAsFile.nameWithoutExtension, ".jpg", encryptedImageDir)
 
                             val fileOutputStream = FileOutputStream(outputImageFile)
 
                             if (encryptorFactory != null) {
                                 val encryptor = encryptorFactory.createImageEncryptor(encodedImage.imageFormat)
-                                encryptor.encrypt(encodedImage, fileOutputStream, lastKey)
-                                FLog.d(TAG, "Wrote %s encrypted to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
+
+                                if (outputFileGreen != null && outputFileBlue != null) {
+                                    val fileOutputStreamGreen = FileOutputStream(outputFileGreen)
+                                    val fileOutputStreamBlue = FileOutputStream(outputFileBlue)
+
+                                    encryptor.encryptEtc(encodedImage, fileOutputStream, fileOutputStreamGreen, fileOutputStreamBlue, lastKey)
+                                    FLog.d(TAG, "Wrote %s encryptEtc Red to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
+                                    FLog.d(TAG, "Wrote %s encryptEtc Green to %s (size: %s bytes)", mUri, outputFileGreen.absolutePath, outputFileGreen.length() / 8)
+                                    FLog.d(TAG, "Wrote %s encryptEtc Blue to %s (size: %s bytes)", mUri, outputFileBlue.absolutePath, outputFileBlue.length() / 8)
+                                    scanFile(outputFileGreen.absolutePath)
+                                    scanFile(outputFileBlue.absolutePath)
+
+                                    Closeables.close(fileOutputStreamGreen, true)
+                                    Closeables.close(fileOutputStreamBlue, true)
+                                } else {
+                                    encryptor.encrypt(encodedImage, fileOutputStream, lastKey)
+                                    FLog.d(TAG, "Wrote %s encrypted to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
+                                }
                             } else if (decryptorFactory != null) {
                                 val decryptor = decryptorFactory.createImageDecryptor(encodedImage.imageFormat)
                                 decryptor.decrypt(encodedImage, fileOutputStream, lastKey)

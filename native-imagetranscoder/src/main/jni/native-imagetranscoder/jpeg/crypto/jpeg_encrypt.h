@@ -16,5 +16,14 @@ void encryptJpeg(
     jstring x_0_jstr,
     jstring mu_jstr);
 
+void encryptJpegEtc(
+    JNIEnv *env,
+    jobject is,
+    jobject os_red,
+    jobject os_green,
+    jobject os_blue,
+    jstring x_0_jstr,
+    jstring mu_jstr);
+
 } } } }
 #endif //FRESCO_JPEG_CRYPTO_H

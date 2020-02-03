@@ -47,6 +47,24 @@ public class NativeJpegEncryptor implements ImageEncryptor {
   }
 
   @Override
+  public ImageEncryptResult encryptEtc(
+          EncodedImage encodedImage,
+          OutputStream outputStreamRed,
+          OutputStream outputStreamGreen,
+          OutputStream outputStreamBlue,
+          JpegCryptoKey key)
+          throws IOException {
+    InputStream is = null;
+    try {
+      is = encodedImage.getInputStream();
+      encryptJpegEtc(is, outputStreamRed, outputStreamGreen, outputStreamBlue, key);
+    } finally {
+      Closeables.closeQuietly(is);
+    }
+    return new ImageEncryptResult(EncryptStatus.ENCRYPTING_SUCCESS);
+  }
+
+  @Override
   public boolean canEncrypt(ImageFormat imageFormat) {
     return imageFormat == DefaultImageFormats.JPEG;
   }
@@ -76,10 +94,38 @@ public class NativeJpegEncryptor implements ImageEncryptor {
             key.getMu());
   }
 
+  @VisibleForTesting
+  public static void encryptJpegEtc(
+          final InputStream inputStream,
+          final OutputStream outputStreamRed,
+          final OutputStream outputStreamGreen,
+          final OutputStream outputStreamBlue,
+          final JpegCryptoKey key)
+          throws IOException {
+    NativeJpegTranscoderSoLoader.ensure();
+    nativeEncryptJpegEtc(
+            Preconditions.checkNotNull(inputStream),
+            Preconditions.checkNotNull(outputStreamRed),
+            Preconditions.checkNotNull(outputStreamGreen),
+            Preconditions.checkNotNull(outputStreamBlue),
+            key.getX0(),
+            key.getMu());
+  }
+
   @DoNotStrip
   private static native void nativeEncryptJpeg(
           InputStream inputStream,
           OutputStream outputStream,
+          String x0,
+          String mu)
+          throws IOException;
+
+  @DoNotStrip
+  private static native void nativeEncryptJpegEtc(
+          InputStream inputStream,
+          OutputStream outputStreamRed,
+          OutputStream outputStreamGreen,
+          OutputStream outputStreamBlue,
           String x0,
           String mu)
           throws IOException;

@@ -32,6 +32,7 @@ public class ImageRequestBuilder {
   private @Nullable ResizeOptions mResizeOptions = null;
   private @Nullable RotationOptions mRotationOptions = null;
   private boolean mEncrypt = false;
+  private boolean mEncryptEtc = false;
   private boolean mDecrypt = false;
   private @Nullable JpegCryptoKey jpegCryptoKey = null;
   private ImageDecodeOptions mImageDecodeOptions = ImageDecodeOptions.defaults();
@@ -200,9 +201,18 @@ public class ImageRequestBuilder {
     return this;
   }
 
+  public ImageRequestBuilder setEncryptEtc(boolean encrypt) {
+    mEncryptEtc = encrypt;
+    return this;
+  }
+
   /** Returns whether encrypting should take place. */
   public boolean shouldEncrypt() {
     return mEncrypt;
+  }
+
+  public boolean shouldEncryptEtc() {
+    return mEncryptEtc;
   }
 
   /**

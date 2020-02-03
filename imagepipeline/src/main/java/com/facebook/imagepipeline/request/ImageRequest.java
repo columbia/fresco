@@ -68,6 +68,7 @@ public class ImageRequest {
 
   /** encrypt or not */
   private final boolean mEncrypt;
+  private final boolean mEncryptEtc;
 
   /** decrypt or not */
   private final boolean mDecrypt;
@@ -137,6 +138,7 @@ public class ImageRequest {
             ? RotationOptions.autoRotate()
             : builder.getRotationOptions();
     mEncrypt = builder.shouldEncrypt();
+    mEncryptEtc = builder.shouldEncryptEtc();
     mDecrypt = builder.shouldDecrypt();
     jpegCryptoKey = builder.getJpegCryptoKey();
     mBytesRange = builder.getBytesRange();
@@ -183,6 +185,10 @@ public class ImageRequest {
   }
 
   public boolean shouldEncrypt() {
+    return mEncrypt;
+  }
+
+  public boolean shouldEncryptEtc() {
     return mEncrypt;
   }
 

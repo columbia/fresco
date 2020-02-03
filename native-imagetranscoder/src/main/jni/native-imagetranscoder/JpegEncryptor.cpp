@@ -9,6 +9,7 @@
 #include "logging.h"
 
 using facebook::imagepipeline::jpeg::crypto::encryptJpeg;
+using facebook::imagepipeline::jpeg::crypto::encryptJpegEtc;
 
 static void JpegEncryptor_encryptJpeg(
     JNIEnv* env,
@@ -26,10 +27,33 @@ static void JpegEncryptor_encryptJpeg(
       mu_jstr);
 }
 
+static void JpegEncryptor_encryptJpegEtc(
+    JNIEnv* env,
+    jclass /* clzz */,
+    jobject is,
+    jobject os_red,
+    jobject os_green,
+    jobject os_blue,
+    jstring x_0_jstr,
+    jstring mu_jstr) {
+  RETURN_IF_EXCEPTION_PENDING;
+  encryptJpegEtc(
+      env,
+      is,
+      os_red,
+      os_green,
+      os_blue,
+      x_0_jstr,
+      mu_jstr);
+}
+
 static JNINativeMethod gJpegEncryptorMethods[] = {
   { "nativeEncryptJpeg",
       "(Ljava/io/InputStream;Ljava/io/OutputStream;Ljava/lang/String;Ljava/lang/String;)V",
       (void*) JpegEncryptor_encryptJpeg },
+  { "nativeEncryptJpegEtc",
+        "(Ljava/io/InputStream;Ljava/io/OutputStream;Ljava/io/OutputStream;Ljava/io/OutputStream;Ljava/lang/String;Ljava/lang/String;)V",
+        (void*) JpegEncryptor_encryptJpegEtc },
 };
 
 bool registerJpegEncryptorMethods(JNIEnv* env) {
