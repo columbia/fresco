@@ -52,8 +52,8 @@ static JNINativeMethod gJpegEncryptorMethods[] = {
       "(Ljava/io/InputStream;Ljava/io/OutputStream;Ljava/lang/String;Ljava/lang/String;)V",
       (void*) JpegEncryptor_encryptJpeg },
   { "nativeEncryptJpegEtc",
-        "(Ljava/io/InputStream;Ljava/io/OutputStream;Ljava/io/OutputStream;Ljava/io/OutputStream;Ljava/lang/String;Ljava/lang/String;)V",
-        (void*) JpegEncryptor_encryptJpegEtc },
+      "(Ljava/io/InputStream;Ljava/io/OutputStream;Ljava/io/OutputStream;Ljava/io/OutputStream;Ljava/lang/String;Ljava/lang/String;)V",
+      (void*) JpegEncryptor_encryptJpegEtc },
 };
 
 bool registerJpegEncryptorMethods(JNIEnv* env) {

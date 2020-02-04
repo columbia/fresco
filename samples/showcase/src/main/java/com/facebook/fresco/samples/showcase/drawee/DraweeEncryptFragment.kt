@@ -31,6 +31,7 @@ import com.facebook.imagepipeline.encryptor.ImageEncryptorFactory
 import com.facebook.imagepipeline.image.EncodedImage
 import com.facebook.imagepipeline.nativecode.NativeImageDecryptorFactory
 import com.facebook.imagepipeline.nativecode.NativeImageEncryptorFactory
+import com.facebook.imagepipeline.request.ImageRequest
 import com.facebook.imagepipeline.request.ImageRequestBuilder
 import kotlinx.coroutines.*
 import org.json.JSONArray
@@ -83,6 +84,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         FLog.d(TAG, "downloadDir=$downloadDir, exists=${downloadDir!!.exists()}")
 
         mUri = sampleUris().createSampleUri()
+        mUri = Uri.parse("http://tri4.net/linksys/temp/r/420-converted/3563895151_5c02e2b8d6_o_420.jpg")
         mDraweeEncryptView = view.findViewById(R.id.drawee_view)
         mDraweeDecryptView = view.findViewById(R.id.drawee_decrypt)
         mDraweeDecryptDiskView = view.findViewById(R.id.drawee_decrypt_disk)
@@ -121,7 +123,8 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         }
 
         view.findViewById<View>(R.id.btn_start_batch_decrypt).setOnClickListener {
-            decryptFiles(downloadDir!!.listFiles().toList())
+            //decryptFiles(downloadDir!!.listFiles().toList())
+            decryptEtcFiles(downloadDir!!.listFiles().toList())
         }
     }
 
@@ -150,7 +153,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
         val factory = NativeImageEncryptorFactory.getNativeImageEncryptorFactory()
 
-        dataSourceToDisk(dataSource, mDraweeEncryptView, factory, null)
+        encryptDataSourceToDisk(dataSource, mDraweeEncryptView, factory, null)
     }
 
     private fun setDecryptOptions() {
@@ -166,7 +169,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
             val factory = NativeImageDecryptorFactory.getNativeImageDecryptorFactory()
 
-            dataSourceToDisk(dataSource, mDraweeDecryptView, null, factory)
+            decryptDataSourceToDisk(dataSource, null, null, mDraweeDecryptView, factory)
         }
     }
 
@@ -185,7 +188,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
         val factory = NativeImageDecryptorFactory.getNativeImageDecryptorFactory()
 
-        dataSourceToDisk(dataSource, mDraweeDecryptDiskView, null, factory)
+        decryptDataSourceToDisk(dataSource, null, null, mDraweeDecryptDiskView, factory)
         //mDraweeDecryptDiskView.setImageRequest(imageRequest);
     }
 
@@ -259,7 +262,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         val factory = NativeImageEncryptorFactory.getNativeImageEncryptorFactory()
 
         FLog.d(TAG, "encryptImage() writing to output file: $outputFile")
-        dataSourceToDisk(dataSource, null, factory, null, outputFile, null, null, callback)
+        encryptDataSourceToDisk(dataSource, null, factory, outputFile, null, null, callback)
     }
 
     private fun encryptEtcImage(image: File, callback: (encryptedFile: File) -> Unit) {
@@ -286,7 +289,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         val factory = NativeImageEncryptorFactory.getNativeImageEncryptorFactory()
 
         FLog.d(TAG, "encryptEtcImage() writing to output file: $outputFileRed / $outputFileGreen / $outputFileBlue")
-        dataSourceToDisk(dataSource, null, factory, null,
+        encryptDataSourceToDisk(dataSource, null, factory,
                 outputFileRed,
                 outputFileGreen,
                 outputFileBlue,
@@ -353,7 +356,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         val factory = NativeImageDecryptorFactory.getNativeImageDecryptorFactory()
 
         FLog.d(TAG, "decryptImage() writing to output file: $outputFile")
-        dataSourceToDisk(dataSource, null, null, factory, outputFile, null, null, callback)
+        decryptDataSourceToDisk(dataSource, null, null, null, factory, outputFile, callback)
     }
 
     private fun decryptFiles(files: List<File>) {
@@ -373,14 +376,76 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         }
     }
 
+    private fun constructDecryptImageRequest(image: File): ImageRequest {
+        val fileUri = Uri.fromFile(image)
+        return ImageRequestBuilder.newBuilderWithSource(fileUri)
+                .setDecrypt(true)
+                .setJpegCryptoKey(lastKey)
+                .setImageDecodeOptions(ImageDecodeOptionsBuilder.newBuilder().build())
+                .build()
+    }
+
+    private fun decryptEtcImage(trio: ImageTrio, callback: (encryptedFile: File) -> Unit) {
+        val outputFile = trio.redFile.parentFile.resolve("${trio.redFile.nameWithoutExtension.replace("encrypted_red", "decrypted")}.${trio.redFile.extension}")
+
+        if (outputFile.exists()) {
+            FLog.d(TAG, "Decrypted image ${outputFile.name} already exists, skipping decryption")
+            scanFile(outputFile.absolutePath)
+            return
+        }
+
+        pipeline!!.clearCaches()
+        setNewKey(true)
+        val imageRequestRed = constructDecryptImageRequest(trio.redFile)
+        val imageRequestGreen = constructDecryptImageRequest(trio.greenFile)
+        val imageRequestBlue = constructDecryptImageRequest(trio.blueFile)
+
+        val dataSourceRed = pipeline!!.fetchEncodedImage(imageRequestRed, this)
+        val dataSourceGreen = pipeline!!.fetchEncodedImage(imageRequestGreen, this)
+        val dataSourceBlue = pipeline!!.fetchEncodedImage(imageRequestBlue, this)
+
+        val factory = NativeImageDecryptorFactory.getNativeImageDecryptorFactory()
+
+        FLog.d(TAG, "decryptImage() writing to output file: $outputFile")
+        decryptDataSourceToDisk(dataSourceRed, dataSourceGreen, dataSourceBlue, null, factory, outputFile, callback)
+    }
+
+
+    private fun decryptEtcFiles(files: List<File>) {
+        val imageTrios = mutableListOf<ImageTrio>()
+
+        for (imageFile in files) {
+            if (!imageFile.nameWithoutExtension.contains("encrypted")) {
+                continue
+            }
+
+            if (imageFile.nameWithoutExtension.contains("encrypted_red")) {
+                val greenFile = File(imageFile.absolutePath.replace("encrypted_red", "encrypted_green"))
+                val blueFile = File(imageFile.absolutePath.replace("encrypted_red", "encrypted_blue"))
+
+                imageTrios.add(ImageTrio(imageFile, greenFile, blueFile))
+            }
+        }
+        GlobalScope.launch(Dispatchers.Main) {
+            // Process only one image at a time
+            for (trio in imageTrios) {
+                withContext(Dispatchers.IO) {
+                    FLog.d(TAG, "Decrypting image $trio")
+                    decryptEtcImage(trio) {
+                        FLog.d(TAG, "Finished decrypting image $trio")
+                    }
+                }
+            }
+        }
+    }
+
     private fun scanFile(path: String) {
         MediaScannerConnection.scanFile(context!!.applicationContext, arrayOf(path), null, msClient)
     }
 
-    private fun dataSourceToDisk(dataSource: DataSource<CloseableReference<PooledByteBuffer>>,
+    private fun encryptDataSourceToDisk(dataSource: DataSource<CloseableReference<PooledByteBuffer>>,
                                  viewToDisplayWith: SimpleDraweeView?,
-                                 encryptorFactory: ImageEncryptorFactory?,
-                                 decryptorFactory: ImageDecryptorFactory?,
+                                 encryptorFactory: ImageEncryptorFactory,
                                  outputFile: File? = null,
                                  outputFileGreen: File? = null,
                                  outputFileBlue: File? = null,
@@ -402,7 +467,6 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
                     try {
                         val encodedImage = EncodedImage(ref)
-                        val `is` = encodedImage.inputStream
 
                         try {
                             val uriAsFile = File(mUri!!.lastPathSegment)
@@ -410,39 +474,31 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
                             val fileOutputStream = FileOutputStream(outputImageFile)
 
-                            if (encryptorFactory != null) {
-                                val encryptor = encryptorFactory.createImageEncryptor(encodedImage.imageFormat)
+                            val encryptor = encryptorFactory.createImageEncryptor(encodedImage.imageFormat)
 
-                                if (outputFileGreen != null && outputFileBlue != null) {
-                                    val fileOutputStreamGreen = FileOutputStream(outputFileGreen)
-                                    val fileOutputStreamBlue = FileOutputStream(outputFileBlue)
+                            if (outputFileGreen != null && outputFileBlue != null) {
+                                val fileOutputStreamGreen = FileOutputStream(outputFileGreen)
+                                val fileOutputStreamBlue = FileOutputStream(outputFileBlue)
 
-                                    encryptor.encryptEtc(encodedImage, fileOutputStream, fileOutputStreamGreen, fileOutputStreamBlue, lastKey)
-                                    FLog.d(TAG, "Wrote %s encryptEtc Red to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
-                                    FLog.d(TAG, "Wrote %s encryptEtc Green to %s (size: %s bytes)", mUri, outputFileGreen.absolutePath, outputFileGreen.length() / 8)
-                                    FLog.d(TAG, "Wrote %s encryptEtc Blue to %s (size: %s bytes)", mUri, outputFileBlue.absolutePath, outputFileBlue.length() / 8)
-                                    scanFile(outputFileGreen.absolutePath)
-                                    scanFile(outputFileBlue.absolutePath)
+                                encryptor.encryptEtc(encodedImage, fileOutputStream, fileOutputStreamGreen, fileOutputStreamBlue, lastKey)
+                                FLog.d(TAG, "Wrote %s encryptEtc Red to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
+                                FLog.d(TAG, "Wrote %s encryptEtc Green to %s (size: %s bytes)", mUri, outputFileGreen.absolutePath, outputFileGreen.length() / 8)
+                                FLog.d(TAG, "Wrote %s encryptEtc Blue to %s (size: %s bytes)", mUri, outputFileBlue.absolutePath, outputFileBlue.length() / 8)
+                                scanFile(outputFileGreen.absolutePath)
+                                scanFile(outputFileBlue.absolutePath)
 
-                                    Closeables.close(fileOutputStreamGreen, true)
-                                    Closeables.close(fileOutputStreamBlue, true)
-                                } else {
-                                    encryptor.encrypt(encodedImage, fileOutputStream, lastKey)
-                                    FLog.d(TAG, "Wrote %s encrypted to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
-                                }
-                            } else if (decryptorFactory != null) {
-                                val decryptor = decryptorFactory.createImageDecryptor(encodedImage.imageFormat)
-                                decryptor.decrypt(encodedImage, fileOutputStream, lastKey)
-                                FLog.d(TAG, "Wrote %s decrypted to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
+                                Closeables.close(fileOutputStreamGreen, true)
+                                Closeables.close(fileOutputStreamBlue, true)
+                            } else {
+                                encryptor.encrypt(encodedImage, fileOutputStream, lastKey)
+                                FLog.d(TAG, "Wrote %s encrypted to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
                             }
 
-                            scanFile(outputImageFile!!.absolutePath)
+                            scanFile(outputImageFile.absolutePath)
 
                             Closeables.close(fileOutputStream, true)
                         } catch (e: IOException) {
                             FLog.e(TAG, "IOException while trying to write encrypted JPEG to disk", e)
-                        } finally {
-                            Closeables.closeQuietly(`is`)
                         }
                     } finally {
                         CloseableReference.closeSafely(ref)
@@ -474,7 +530,135 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         dataSource.subscribe(dataSubscriber, executor)
     }
 
+    private fun handleDataSourceResult(ref: CloseableReference<PooledByteBuffer>,
+                                       refGreen: CloseableReference<PooledByteBuffer>?,
+                                       refBlue: CloseableReference<PooledByteBuffer>?,
+                                       viewToDisplayWith: SimpleDraweeView?,
+                                       decryptorFactory: ImageDecryptorFactory,
+                                       outputFile: File? = null,
+                                       callback: ((encryptedFile: File) -> Unit)? = null) {
+        var outputImageFile: File? = null
+
+        try {
+            val encodedImage = EncodedImage(ref)
+
+            try {
+                val uriAsFile = File(mUri!!.lastPathSegment)
+                outputImageFile = outputFile
+                        ?: File.createTempFile(uriAsFile.nameWithoutExtension, ".jpg", encryptedImageDir)
+
+                val fileOutputStream = FileOutputStream(outputImageFile)
+
+                val decryptor = decryptorFactory.createImageDecryptor(encodedImage.imageFormat)
+
+                if (refGreen != null && refBlue != null) {
+                    val encodedImageGreen = EncodedImage(refGreen)
+                    val encodedImageBlue = EncodedImage(refBlue)
+                    FLog.d(TAG, "decryptDataSourceToDisk invoking decryptEtc()")
+                    decryptor.decryptEtc(encodedImage, encodedImageGreen, encodedImageBlue, fileOutputStream, lastKey)
+                } else {
+                    decryptor.decrypt(encodedImage, fileOutputStream, lastKey)
+                }
+                FLog.d(TAG, "Wrote %s decrypted to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
+
+                scanFile(outputImageFile.absolutePath)
+
+                Closeables.close(fileOutputStream, true)
+            } catch (e: IOException) {
+                FLog.e(TAG, "IOException while trying to write encrypted JPEG to disk", e)
+            }
+        } finally {
+            CloseableReference.closeSafely(ref)
+            CloseableReference.closeSafely(refGreen)
+            CloseableReference.closeSafely(refBlue)
+        }
+
+        if (outputImageFile != null) {
+            lastSavedImage = Uri.parse(outputImageFile.toURI().toString())
+
+            if (viewToDisplayWith != null) {
+                val imageRequest = ImageRequestBuilder.newBuilderWithSource(lastSavedImage)
+                        .setImageDecodeOptions(ImageDecodeOptionsBuilder.newBuilder().build())
+                        .build()
+                viewToDisplayWith.setImageRequest(imageRequest)
+            }
+
+            if (callback != null) {
+                callback(outputImageFile)
+            }
+        }
+    }
+
+    private fun decryptDataSourceToDisk(dataSource: DataSource<CloseableReference<PooledByteBuffer>>,
+                                        dataSourceGreen: DataSource<CloseableReference<PooledByteBuffer>>?,
+                                        dataSourceBlue: DataSource<CloseableReference<PooledByteBuffer>>?,
+                                        viewToDisplayWith: SimpleDraweeView?,
+                                        decryptorFactory: ImageDecryptorFactory,
+                                        outputFile: File? = null,
+                                        callback: ((encryptedFile: File) -> Unit)? = null) {
+        val executor = DefaultExecutorSupplier(1).forBackgroundTasks()
+
+        // This is super ugly but idk how to wait for multiple datasources
+        val dataSubscriber = object : BaseDataSubscriber<CloseableReference<PooledByteBuffer>>() {
+            override fun onNewResultImpl(
+                    dataSource: DataSource<CloseableReference<PooledByteBuffer>>) {
+                val ref = dataSource.result
+
+                if (ref != null) {
+                    if (dataSourceGreen == null && dataSourceBlue == null) {
+                        handleDataSourceResult(ref, null, null, viewToDisplayWith, decryptorFactory, outputFile, callback)
+                    } else {
+                        val dataSubscriberGreen = object : BaseDataSubscriber<CloseableReference<PooledByteBuffer>>() {
+                            override fun onNewResultImpl(
+                                    dataSourceGreenResult: DataSource<CloseableReference<PooledByteBuffer>>) {
+                                val refGreen = dataSourceGreenResult.result
+
+                                if (refGreen != null) {
+                                    val dataSubscriberBlue = object : BaseDataSubscriber<CloseableReference<PooledByteBuffer>>() {
+                                        override fun onNewResultImpl(
+                                                dataSourceBlueResult: DataSource<CloseableReference<PooledByteBuffer>>) {
+                                            val refBlue = dataSourceBlueResult.result
+
+                                            if (refBlue != null) {
+                                                handleDataSourceResult(ref, refGreen, refBlue, viewToDisplayWith, decryptorFactory, outputFile, callback)
+                                            }
+                                        }
+
+                                        override fun onFailureImpl(dataSource: DataSource<CloseableReference<PooledByteBuffer>>) {
+                                            val t = dataSource.failureCause
+                                            FLog.e(TAG, "Failed to load blueRef", t)
+                                        }
+                                    }
+
+                                    dataSourceBlue?.subscribe(dataSubscriberBlue, executor)
+                                }
+                            }
+
+                            override fun onFailureImpl(dataSource: DataSource<CloseableReference<PooledByteBuffer>>) {
+                                val t = dataSource.failureCause
+                                FLog.e(TAG, "Failed to load greenRef", t)
+                            }
+                        }
+
+                        dataSourceGreen?.subscribe(dataSubscriberGreen, executor)
+                    }
+                }
+            }
+
+            override fun onFailureImpl(dataSource: DataSource<CloseableReference<PooledByteBuffer>>) {
+                val t = dataSource.failureCause
+                FLog.e(TAG, "Failed to load decrypt ref", t)
+            }
+        }
+
+        dataSource.subscribe(dataSubscriber, executor)
+    }
+
     override fun getTitleId(): Int {
         return R.string.drawee_encrypt_title
     }
+
+    data class ImageTrio(var redFile: File,
+                         var greenFile: File,
+                         var blueFile: File)
 }

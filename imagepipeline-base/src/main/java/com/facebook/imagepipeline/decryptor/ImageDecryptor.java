@@ -27,6 +27,25 @@ public interface ImageDecryptor {
           throws IOException;
 
   /**
+   * Decrypts an image.
+   *
+   * @param encodedImageRed The red {@link EncodedImage} that will be decrypted.
+   * @param encodedImageGreen The green {@link EncodedImage} that will be decrypted.
+   * @param encodedImageBlue The blue {@link EncodedImage} that will be decrypted.
+   * @param outputStream The {@link OutputStream} where the newly created image is written to.
+   * @param key {@link JpegCryptoKey} representing the secret values to use for the crypto.
+   * @return The {@link ImageDecryptResult} generated when encoding the image.
+   * @throws IOException if I/O error happens when reading or writing the images.
+   */
+  ImageDecryptResult decryptEtc(
+          EncodedImage encodedImageRed,
+          EncodedImage encodedImageGreen,
+          EncodedImage encodedImageBlue,
+          OutputStream outputStream,
+          JpegCryptoKey key)
+          throws IOException;
+
+  /**
    * Whether the input {@link ImageFormat} can be encrypted by the image decryptor.
    *
    * @param imageFormat The {@link ImageFormat} that will be decrypted.

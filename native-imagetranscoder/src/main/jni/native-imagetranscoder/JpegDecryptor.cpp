@@ -9,6 +9,7 @@
 #include "logging.h"
 
 using facebook::imagepipeline::jpeg::crypto::decryptJpeg;
+using facebook::imagepipeline::jpeg::crypto::decryptJpegEtc;
 
 static void JpegDecryptor_decryptJpeg(
     JNIEnv* env,
@@ -26,10 +27,33 @@ static void JpegDecryptor_decryptJpeg(
       mu_jstr);
 }
 
+static void JpegDecryptor_decryptJpegEtc(
+    JNIEnv* env,
+    jclass /* clzz */,
+    jobject is_red,
+    jobject is_green,
+    jobject is_blue,
+    jobject os,
+    jstring x_0_jstr,
+    jstring mu_jstr) {
+  RETURN_IF_EXCEPTION_PENDING;
+  decryptJpegEtc(
+      env,
+      is_red,
+      is_green,
+      is_blue,
+      os,
+      x_0_jstr,
+      mu_jstr);
+}
+
 static JNINativeMethod gJpegDecryptorMethods[] = {
   { "nativeDecryptJpeg",
       "(Ljava/io/InputStream;Ljava/io/OutputStream;Ljava/lang/String;Ljava/lang/String;)V",
       (void*) JpegDecryptor_decryptJpeg },
+  { "nativeDecryptJpegEtc",
+      "(Ljava/io/InputStream;Ljava/io/InputStream;Ljava/io/InputStream;Ljava/io/OutputStream;Ljava/lang/String;Ljava/lang/String;)V",
+      (void*) JpegDecryptor_decryptJpegEtc },
 };
 
 bool registerJpegDecryptorMethods(JNIEnv* env) {

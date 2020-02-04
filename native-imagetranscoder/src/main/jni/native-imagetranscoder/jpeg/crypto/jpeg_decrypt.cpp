@@ -718,9 +718,17 @@ void decryptJpegEtc(
     return;
   }
 
+  LOGD("decryptJpegEtc starting");
+
   initDecompressStruct(dinfo_red, error_handler, src_red);
   initDecompressStruct(dinfo_green, error_handler, src_green);
   initDecompressStruct(dinfo_blue, error_handler, src_blue);
+
+  jpeg_start_decompress(&dinfo_red);
+  jpeg_start_decompress(&dinfo_green);
+  jpeg_start_decompress(&dinfo_blue);
+
+  LOGD("decryptJpegEtc started decompress");
 
   rows = ceil(dinfo_red.output_height / BLOCK_HEIGHT) + 1;
   columns = ceil(dinfo_red.output_width / BLOCK_WIDTH) + 1;
