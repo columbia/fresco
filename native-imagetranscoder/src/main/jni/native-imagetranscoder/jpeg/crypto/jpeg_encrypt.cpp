@@ -802,6 +802,8 @@ static void scramble_rgb(struct rgb_block **blocks,
 
   std::default_random_engine generator;
 
+  generator.seed(10000000);
+
   LOGD("scramble_rgb rows=%d, columns=%d", rows, columns);
 
   for (int i = columns * rows - 1; i >= 0; i--) {
@@ -834,7 +836,6 @@ static void do_encrypt_etc(j_decompress_ptr dinfo,
     unsigned int columns) {
   JSAMPARRAY buffer;            /* Output row buffer */
   int row_stride;               /* physical row width in output buffer */
-
 
   // make an output work buffer of the right size.
   // JSAMPLEs per row in output buffer
@@ -911,6 +912,7 @@ static void encrypt_etc(
   struct jpeg_destination_mgr& dest_green = os_wrapper_green.public_fields;
   struct jpeg_destination_mgr& dest_blue = os_wrapper_blue.public_fields;
   struct rgb_block **rgb_copy;
+  struct jpeg_decompress_struct dinfo;
   struct jpeg_compress_struct cinfo_red;
   struct jpeg_compress_struct cinfo_green;
   struct jpeg_compress_struct cinfo_blue;
@@ -926,7 +928,6 @@ static void encrypt_etc(
   }
 
   // prepare decompress struct
-  struct jpeg_decompress_struct dinfo;
   initDecompressStruct(dinfo, error_handler, source);
   dinfo.out_color_space = JCS_EXT_RGBX;
 
@@ -952,9 +953,9 @@ static void encrypt_etc(
   // Now write the scrambled RGB channels
   row_stride = cinfo_red.image_width; /* JSAMPLEs per row in image_buffer */
 
-  r_row = (JSAMPLE *) malloc(row_stride * sizeof(JSAMPLE) * 3);
-  g_row = (JSAMPLE *) malloc(row_stride * sizeof(JSAMPLE) * 3);
-  b_row = (JSAMPLE *) malloc(row_stride * sizeof(JSAMPLE) * 3);
+  r_row = (JSAMPLE *) malloc(row_stride * sizeof(JSAMPLE));
+  g_row = (JSAMPLE *) malloc(row_stride * sizeof(JSAMPLE));
+  b_row = (JSAMPLE *) malloc(row_stride * sizeof(JSAMPLE));
   if (r_row == NULL || g_row == NULL || b_row == NULL) {
     LOGE("encrypt_etc failed to allocate r_row / g_row / b_row");
     goto teardown;

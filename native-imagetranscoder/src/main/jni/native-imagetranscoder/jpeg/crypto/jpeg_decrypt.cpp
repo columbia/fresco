@@ -1,8 +1,10 @@
 #include <algorithm>
 #include <iterator>
+#include <random>
 
 #include <stdio.h>
 #include <setjmp.h>
+#include <math.h>
 
 #include <jni.h>
 #include <jpeglib.h>
@@ -581,6 +583,205 @@ teardown:
   jpeg_finish_compress(&cinfo);
   jpeg_destroy_compress(&cinfo);
   jpeg_destroy_decompress(&dinfo);
+}
+
+static void unscramble_rgb(struct rgb_block **blocks,
+    unsigned int rows,
+    unsigned int columns) {
+
+  unsigned int indices[columns * rows];
+  std::default_random_engine generator;
+
+  generator.seed(10000000);
+
+  LOGD("unscramble_rgb rows=%d, columns=%d", rows, columns);
+
+  for (int i = columns * rows - 1; i >= 0; i--) {
+    std::uniform_int_distribution<int> dist(0, i);
+    indices[i] = dist(generator);
+  }
+
+  for (int i = columns * rows - 1; i >= 0; i--) {
+    int j;
+    struct rgb_block temp;
+    int block_i_x = i % columns;
+    int block_i_y = i / columns;
+    int block_j_x;
+    int block_j_y;
+
+    j = indices[i];
+
+    block_j_x = j % columns;
+    block_j_y = j / columns;
+
+    temp = blocks[block_j_y][block_j_x];
+    blocks[block_j_y][block_j_y] = blocks[block_i_y][block_i_x];
+    blocks[block_i_y][block_i_x] = temp;
+  }
+
+  LOGD("unscramble_rgb finished");
+}
+
+static void do_decrypt_etc(
+    j_decompress_ptr dinfo_red,
+    j_decompress_ptr dinfo_green,
+    j_decompress_ptr dinfo_blue,
+    struct rgb_block **rgb_copy,
+    unsigned int rows,
+    unsigned int columns) {
+  JSAMPARRAY buffer_red;
+  JSAMPARRAY buffer_green;
+  JSAMPARRAY buffer_blue;
+  int row_stride;
+
+  // JSAMPLEs per row in output buffer
+  row_stride = dinfo_red->output_width * dinfo_red->output_components;
+
+  // Make a sample array that will go away when done with image
+  buffer_red = (*dinfo_red->mem->alloc_sarray)((j_common_ptr) dinfo_red, JPOOL_IMAGE, row_stride, 1);
+  buffer_green = (*dinfo_red->mem->alloc_sarray)((j_common_ptr) dinfo_green, JPOOL_IMAGE, row_stride, 1);
+  buffer_blue = (*dinfo_red->mem->alloc_sarray)((j_common_ptr) dinfo_blue, JPOOL_IMAGE, row_stride, 1);
+
+  LOGD("do_decrypt_etc rows=%d (height=%d), columns=%d (width=%d) / row_stride=%d", rows, dinfo_red->output_height, columns, dinfo_red->output_width, row_stride);
+
+  // Copy decompressed RGB values to our buffer (TODO: copy to the scrambled position in rgb_copy)
+  while (dinfo_red->output_scanline < dinfo_red->output_height) {
+    unsigned char *pixels_red;
+    unsigned char *pixels_green;
+    unsigned char *pixels_blue;
+    int block_y;
+    int pixel_y;
+
+    jpeg_read_scanlines(dinfo_red, buffer_red, 1);
+    jpeg_read_scanlines(dinfo_green, buffer_green, 1);
+    jpeg_read_scanlines(dinfo_blue, buffer_blue, 1);
+
+    pixels_red = (unsigned char *) buffer_red[0];
+    pixels_green = (unsigned char *) buffer_green[0];
+    pixels_blue = (unsigned char *) buffer_blue[0];
+
+    block_y = dinfo_red->output_scanline / BLOCK_HEIGHT;
+    pixel_y = dinfo_red->output_scanline % BLOCK_HEIGHT;
+
+    for (int i = 0; i < row_stride; i += dinfo_red->output_components) {
+      int block_x = i / (dinfo_red->output_components * BLOCK_WIDTH);
+      int pixel_x = (i / dinfo_red->output_components) % BLOCK_WIDTH;
+
+      // if (block_x >= columns || block_y >= rows || pixel_x >= BLOCK_WIDTH || pixel_y >= BLOCK_HEIGHT)
+        //LOGD("do_encrypt_etc (%d, %d) / (%d, %d)", block_x, block_y, pixel_x, pixel_y);
+
+      rgb_copy[block_y][block_x].red[pixel_y][pixel_x] = *pixels_red;
+      rgb_copy[block_y][block_x].green[pixel_y][pixel_x] = *pixels_green;
+      rgb_copy[block_y][block_x].blue[pixel_y][pixel_x] = *pixels_blue;
+
+      // Google Photos converts 8-bit grayscale to 24-bit color so there might be 1 or 3 components
+      pixels_red += dinfo_red->output_components;
+      pixels_green += dinfo_green->output_components;
+      pixels_blue += dinfo_blue->output_components;
+    }
+  }
+
+  // Now scramble the copied RGB values
+  unscramble_rgb(rgb_copy, rows, columns);
+
+  LOGD("do_decrypt_etc finished");
+}
+
+void decryptJpegEtc(
+    JNIEnv *env,
+    jobject is_red,
+    jobject is_green,
+    jobject is_blue,
+    jobject os,
+    jstring x_0_jstr,
+    jstring mu_jstr) {
+  JpegInputStreamWrapper is_wrapper_red{env, is_red};
+  JpegInputStreamWrapper is_wrapper_green{env, is_green};
+  JpegInputStreamWrapper is_wrapper_blue{env, is_blue};
+  JpegOutputStreamWrapper os_wrapper{env, os};
+  JpegErrorHandler error_handler{env};
+  struct jpeg_source_mgr& src_red = is_wrapper_red.public_fields;
+  struct jpeg_source_mgr& src_green = is_wrapper_green.public_fields;
+  struct jpeg_source_mgr& src_blue = is_wrapper_blue.public_fields;
+  struct jpeg_destination_mgr& dest = os_wrapper.public_fields;
+  struct rgb_block **rgb_copy;
+  struct jpeg_decompress_struct dinfo_red;
+  struct jpeg_decompress_struct dinfo_green;
+  struct jpeg_decompress_struct dinfo_blue;
+  struct jpeg_compress_struct cinfo;
+  unsigned int rows;
+  unsigned int columns;
+  unsigned int row_stride;
+  JSAMPLE *rgb_row; // JSAMPLE is char
+
+  if (setjmp(error_handler.setjmpBuffer)) {
+    return;
+  }
+
+  initDecompressStruct(dinfo_red, error_handler, src_red);
+  initDecompressStruct(dinfo_green, error_handler, src_green);
+  initDecompressStruct(dinfo_blue, error_handler, src_blue);
+
+  rows = ceil(dinfo_red.output_height / BLOCK_HEIGHT) + 1;
+  columns = ceil(dinfo_red.output_width / BLOCK_WIDTH) + 1;
+  rgb_copy = new struct rgb_block *[rows];
+  for (int i = 0; i < rows; ++i)
+    rgb_copy[i] = new rgb_block[columns];
+
+  do_decrypt_etc(&dinfo_red, &dinfo_green, &dinfo_blue, rgb_copy, rows, columns);
+
+  // Decrypt done, write result out
+  initCompressStruct(cinfo, dinfo_red, error_handler, dest);
+  cinfo.input_components = 3;
+  cinfo.in_color_space = JCS_RGB;
+  jpeg_set_defaults(&cinfo);
+  jpeg_set_quality(&cinfo, 85, TRUE);
+  jpeg_start_compress(&cinfo, TRUE);
+
+  // Now write the scrambled RGB channels
+  row_stride = cinfo.image_width;
+
+  rgb_row = (JSAMPLE *) malloc(row_stride * sizeof(JSAMPLE) * cinfo.input_components);
+  if (rgb_row == NULL) {
+    LOGE("decryptJpegEtc failed to allocate rgb_row");
+    goto teardown;
+  }
+
+  LOGD("decryptJpegEtc row_stride=%d, num_components=%d", row_stride, cinfo.num_components);
+  while (cinfo.next_scanline < cinfo.image_height) {
+    JSAMPROW row_pointer[row_stride];
+    int block_y = cinfo.next_scanline / BLOCK_HEIGHT;
+    int pixel_y = cinfo.next_scanline % BLOCK_HEIGHT;
+
+    for (int i = 0; i < row_stride; i++) {
+      int block_x = i / BLOCK_WIDTH;
+      int pixel_x = i % BLOCK_WIDTH;
+
+      rgb_row[i++] = rgb_copy[block_y][block_x].red[pixel_y][pixel_x];
+      rgb_row[i++] = rgb_copy[block_y][block_x].green[pixel_y][pixel_x];
+      rgb_row[i] = rgb_copy[block_y][block_x].blue[pixel_y][pixel_x];
+    }
+
+    row_pointer[0] = rgb_row;
+    jpeg_write_scanlines(&cinfo, row_pointer, 1);
+  }
+
+teardown:
+  for (int i = 0; i < rows; ++i)
+    delete[] rgb_copy[i];
+
+  delete[] rgb_copy;
+  if (rgb_row != NULL)
+    free(rgb_row);
+  jpeg_finish_decompress(&dinfo_red);
+  jpeg_finish_decompress(&dinfo_green);
+  jpeg_finish_decompress(&dinfo_blue);
+  jpeg_destroy_decompress(&dinfo_red);
+  jpeg_destroy_decompress(&dinfo_green);
+  jpeg_destroy_decompress(&dinfo_blue);
+
+  jpeg_finish_compress(&cinfo);
+  jpeg_destroy_compress(&cinfo);
 }
 
 } } } }
