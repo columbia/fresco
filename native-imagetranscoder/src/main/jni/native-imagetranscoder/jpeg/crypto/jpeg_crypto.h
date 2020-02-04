@@ -13,6 +13,16 @@ const float SCALE_MAX_X = 1.0;
 const float SCALE_MIN_MU = 3.57;
 const float SCALE_MAX_MU = 4.0;
 
+#define BLOCK_WIDTH 8
+#define BLOCK_HEIGHT 8
+#define PIXELS_PER_BLOCK 64
+
+struct rgb_block {
+  char red[BLOCK_HEIGHT][BLOCK_WIDTH];
+  char blue[BLOCK_HEIGHT][BLOCK_WIDTH];
+  char green[BLOCK_HEIGHT][BLOCK_WIDTH];
+};
+
 struct chaos_dc {
   float chaos;
   unsigned int chaos_pos;

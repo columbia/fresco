@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <iterator>
+#include <random>
 
 #include <stdio.h>
 #include <setjmp.h>
@@ -795,22 +796,45 @@ teardown:
 /////////////
 /////////////
 /////////////
-#define BLOCK_WIDTH 8
-#define BLOCK_HEIGHT 8
-#define PIXELS_PER_BLOCK 64
+static void scramble_rgb(struct rgb_block **blocks,
+    unsigned int rows,
+    unsigned int columns) {
 
-struct rgb_block {
-  char red[BLOCK_HEIGHT][BLOCK_WIDTH];
-  char blue[BLOCK_HEIGHT][BLOCK_WIDTH];
-  char green[BLOCK_HEIGHT][BLOCK_WIDTH];
-};
+  std::default_random_engine generator;
 
-static struct rgb_block **do_encrypt_etc(j_decompress_ptr dinfo,
-      unsigned int rows,
-      unsigned int columns) {
+  LOGD("scramble_rgb rows=%d, columns=%d", rows, columns);
+
+  for (int i = columns * rows - 1; i >= 0; i--) {
+    int j;
+    struct rgb_block temp;
+    int block_i_x = i % columns;
+    int block_i_y = i / columns;
+    int block_j_x;
+    int block_j_y;
+
+    std::uniform_int_distribution<int> dist(0, i);
+    j = dist(generator);
+
+    block_j_x = j % columns;
+    block_j_y = j / columns;
+
+    //LOGD("scramble_rgb i=%d, j=%d, i (%d, %d), j (%d, %d)", i, j, block_i_x, block_i_y, block_j_x, block_j_y);
+
+    temp = blocks[block_i_y][block_i_x];
+    blocks[block_i_y][block_i_x] = blocks[block_j_y][block_j_x];
+    blocks[block_j_y][block_j_x] = temp;
+  }
+
+  LOGD("scramble_rgb finished");
+}
+
+static void do_encrypt_etc(j_decompress_ptr dinfo,
+    struct rgb_block **rgb_copy,
+    unsigned int rows,
+    unsigned int columns) {
   JSAMPARRAY buffer;            /* Output row buffer */
   int row_stride;               /* physical row width in output buffer */
-  struct rgb_block **rgb_copy;
+
 
   // make an output work buffer of the right size.
   // JSAMPLEs per row in output buffer
@@ -818,11 +842,6 @@ static struct rgb_block **do_encrypt_etc(j_decompress_ptr dinfo,
 
   // Make a sample array that will go away when done with image
   buffer = (*dinfo->mem->alloc_sarray)((j_common_ptr) dinfo, JPOOL_IMAGE, row_stride, 1);
-
-  // initialize rgb_copy
-  rgb_copy = new struct rgb_block *[rows];
-  for (int i = 0; i < rows; ++i)
-    rgb_copy[i] = new rgb_block[columns];
 
   LOGD("do_encrypt_etc rows=%d (height=%d), columns=%d (width=%d) / row_stride=%d", rows, dinfo->output_height, columns, dinfo->output_width, row_stride);
 
@@ -853,10 +872,9 @@ static struct rgb_block **do_encrypt_etc(j_decompress_ptr dinfo,
   }
 
   // Now scramble the copied RGB values
+  scramble_rgb(rgb_copy, rows, columns);
 
   LOGD("do_encrypt_etc finished");
-
-  return rgb_copy;
 }
 
 static void initialize_grayscale_compress(struct jpeg_compress_struct& cinfo,
@@ -892,7 +910,7 @@ static void encrypt_etc(
   struct jpeg_destination_mgr& dest_red = os_wrapper_red.public_fields;
   struct jpeg_destination_mgr& dest_green = os_wrapper_green.public_fields;
   struct jpeg_destination_mgr& dest_blue = os_wrapper_blue.public_fields;
-  struct rgb_block **rgb_scrambled;
+  struct rgb_block **rgb_copy;
   struct jpeg_compress_struct cinfo_red;
   struct jpeg_compress_struct cinfo_green;
   struct jpeg_compress_struct cinfo_blue;
@@ -916,7 +934,11 @@ static void encrypt_etc(
 
   rows = ceil(dinfo.output_height / BLOCK_HEIGHT) + 1;
   columns = ceil(dinfo.output_width / BLOCK_WIDTH) + 1;
-  rgb_scrambled = do_encrypt_etc(&dinfo, rows, columns);
+  rgb_copy = new struct rgb_block *[rows];
+  for (int i = 0; i < rows; ++i)
+    rgb_copy[i] = new rgb_block[columns];
+
+  do_encrypt_etc(&dinfo, rgb_copy, rows, columns);
 
   // Now ready to write the output compressed JPEG
   // create compress struct
@@ -948,9 +970,9 @@ static void encrypt_etc(
       int block_x = i / BLOCK_WIDTH;
       int pixel_x = i % BLOCK_WIDTH;
 
-      r_row[i] = rgb_scrambled[block_y][block_x].red[pixel_y][pixel_x];
-      g_row[i] = rgb_scrambled[block_y][block_x].green[pixel_y][pixel_x];
-      b_row[i] = rgb_scrambled[block_y][block_x].blue[pixel_y][pixel_x];
+      r_row[i] = rgb_copy[block_y][block_x].red[pixel_y][pixel_x];
+      g_row[i] = rgb_copy[block_y][block_x].green[pixel_y][pixel_x];
+      b_row[i] = rgb_copy[block_y][block_x].blue[pixel_y][pixel_x];
     }
 
     row_pointer[0] = r_row;
@@ -965,9 +987,9 @@ static void encrypt_etc(
 
 teardown:
   for (int i = 0; i < rows; ++i)
-    delete[] rgb_scrambled[i];
+    delete[] rgb_copy[i];
 
-  delete[] rgb_scrambled;
+  delete[] rgb_copy;
   if (r_row != NULL)
     free(r_row);
   if (g_row != NULL)
