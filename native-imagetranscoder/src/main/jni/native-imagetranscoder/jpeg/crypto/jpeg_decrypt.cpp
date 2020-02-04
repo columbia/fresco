@@ -689,7 +689,7 @@ static void do_decrypt_etc(
   }
 
   // Now scramble the copied RGB values
-  //unscramble_rgb(rgb_copy, rows, columns);
+  unscramble_rgb(rgb_copy, rows, columns);
 
   LOGD("do_decrypt_etc finished");
 }

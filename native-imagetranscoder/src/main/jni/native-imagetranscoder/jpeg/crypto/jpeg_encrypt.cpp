@@ -885,7 +885,7 @@ static void do_encrypt_etc(j_decompress_ptr dinfo,
   }
 
   // Now scramble the copied RGB values
-  //scramble_rgb(rgb_copy, rows, columns);
+  scramble_rgb(rgb_copy, rows, columns);
 
   LOGD("do_encrypt_etc finished");
 }
