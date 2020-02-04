@@ -610,7 +610,6 @@ static void unscramble_rgb(struct rgb_block **blocks,
     int block_j_y;
 
     j = indices[i];
-    LOGD("unscramble_rgb rows=%d, i,j (%d, %d)", rows, i, j);
 
     block_j_x = j % columns;
     block_j_y = j / columns;
@@ -645,24 +644,31 @@ static void do_decrypt_etc(
 
   LOGD("do_decrypt_etc rows=%d (height=%d), columns=%d (width=%d) / row_stride=%d", rows, dinfo_red->output_height, columns, dinfo_red->output_width, row_stride);
 
-  // Copy decompressed RGB values to our buffer (TODO: copy to the scrambled position in rgb_copy)
+  // Copy decompressed RGB values to our buffer
   while (dinfo_red->output_scanline < dinfo_red->output_height) {
     unsigned char *pixels_red;
     unsigned char *pixels_green;
     unsigned char *pixels_blue;
     int block_y;
     int pixel_y;
+    int line = dinfo_red->output_scanline;
 
     jpeg_read_scanlines(dinfo_red, buffer_red, 1);
     jpeg_read_scanlines(dinfo_green, buffer_green, 1);
     jpeg_read_scanlines(dinfo_blue, buffer_blue, 1);
 
+    // For some reason the first line is garbage data, and output_scanline goes up to output_height
+    if (line == 0)
+      continue;
+
+    line -= 1;
+
     pixels_red = (unsigned char *) buffer_red[0];
     pixels_green = (unsigned char *) buffer_green[0];
     pixels_blue = (unsigned char *) buffer_blue[0];
 
-    block_y = dinfo_red->output_scanline / BLOCK_HEIGHT;
-    pixel_y = dinfo_red->output_scanline % BLOCK_HEIGHT;
+    block_y = line / BLOCK_HEIGHT;
+    pixel_y = line % BLOCK_HEIGHT;
 
     for (int i = 0; i < row_stride; i += dinfo_red->output_components) {
       int block_x = i / (dinfo_red->output_components * BLOCK_WIDTH);
@@ -683,7 +689,7 @@ static void do_decrypt_etc(
   }
 
   // Now scramble the copied RGB values
-  unscramble_rgb(rgb_copy, rows, columns);
+  //unscramble_rgb(rgb_copy, rows, columns);
 
   LOGD("do_decrypt_etc finished");
 }
@@ -732,8 +738,8 @@ void decryptJpegEtc(
 
   LOGD("decryptJpegEtc started decompress");
 
-  rows = ceil(dinfo_red.output_height / BLOCK_HEIGHT) + 1;
-  columns = ceil(dinfo_red.output_width / BLOCK_WIDTH) + 1;
+  rows = ceil(dinfo_red.output_height / BLOCK_HEIGHT);
+  columns = ceil(dinfo_red.output_width / BLOCK_WIDTH);
   rgb_copy = new struct rgb_block *[rows];
   for (int i = 0; i < rows; ++i)
     rgb_copy[i] = new rgb_block[columns];

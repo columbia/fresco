@@ -842,36 +842,50 @@ static void do_encrypt_etc(j_decompress_ptr dinfo,
   // Make a sample array that will go away when done with image
   buffer = (*dinfo->mem->alloc_sarray)((j_common_ptr) dinfo, JPOOL_IMAGE, row_stride, 1);
 
-  LOGD("do_encrypt_etc rows=%d (height=%d), columns=%d (width=%d) / row_stride=%d", rows, dinfo->output_height, columns, dinfo->output_width, row_stride);
+  LOGD("do_encrypt_etc rows=%d (height=%d), columns=%d (width=%d) / row_stride=%d / output_scanline=%d", rows, dinfo->output_height, columns, dinfo->output_width, row_stride, dinfo->output_scanline);
 
-  // Copy decompressed RGB values to our buffer (TODO: copy to the scrambled position in rgb_copy)
+  // Copy decompressed RGB values to our buffer
   while (dinfo->output_scanline < dinfo->output_height) {
     unsigned char *pixels;
     int block_y;
     int pixel_y;
+    int read_lines;
+    int line = dinfo->output_scanline;
 
-    jpeg_read_scanlines(dinfo, buffer, 1);
+    read_lines = jpeg_read_scanlines(dinfo, buffer, 1);
+
+    if (read_lines != 1)
+      LOGE("do_encrypt_etc jpeg_read_scanlines didn't read even 1 line, output_scanline=%d / (height=%d)", dinfo->output_scanline, dinfo->output_height);
+
+    // For some reason the first line is garbage data, and output_scanline goes up to output_height
+    if (line == 0)
+      continue;
+
+    line -= 1;
 
     pixels = (unsigned char *) buffer[0];
-    block_y = dinfo->output_scanline / BLOCK_HEIGHT;
-    pixel_y = dinfo->output_scanline % BLOCK_HEIGHT;
+    block_y = line / BLOCK_HEIGHT;
+    pixel_y = line % BLOCK_HEIGHT;
 
     for (int i = 0; i < row_stride; i += dinfo->output_components) {
       int block_x = i / (dinfo->output_components * BLOCK_WIDTH); // buffer is R,G,B,X,R,G,B,X,...
       int pixel_x = (i / dinfo->output_components) % BLOCK_WIDTH;
 
-      // if (block_x >= columns || block_y >= rows || pixel_x >= BLOCK_WIDTH || pixel_y >= BLOCK_HEIGHT)
-        //LOGD("do_encrypt_etc (%d, %d) / (%d, %d)", block_x, block_y, pixel_x, pixel_y);
+      if (block_x >= columns || block_y >= rows)
+        LOGD("do_encrypt_etc 1 (%d, %d) output_scanline=%d, line=%d / (%d, %d)", block_x, block_y, dinfo->output_scanline, line, pixel_x, pixel_y);
 
       rgb_copy[block_y][block_x].red[pixel_y][pixel_x] = *pixels++;
       rgb_copy[block_y][block_x].blue[pixel_y][pixel_x] = *pixels++;
       rgb_copy[block_y][block_x].green[pixel_y][pixel_x] = *pixels++;
-      pixels++; // We are using RGBX so there's an extra byte
+      pixels += (dinfo->output_components - 3); // Might be using RGBX so there's an extra byte
+
+      if (block_x >= columns || block_y >= rows)
+              LOGD("do_encrypt_etc 2 (%d, %d) output_scanline=%d / (%d, %d)", block_x, block_y, dinfo->output_scanline, pixel_x, pixel_y);
     }
   }
 
   // Now scramble the copied RGB values
-  scramble_rgb(rgb_copy, rows, columns);
+  //scramble_rgb(rgb_copy, rows, columns);
 
   LOGD("do_encrypt_etc finished");
 }
@@ -932,8 +946,8 @@ static void encrypt_etc(
 
   jpeg_start_decompress(&dinfo);
 
-  rows = ceil(dinfo.output_height / BLOCK_HEIGHT) + 1;
-  columns = ceil(dinfo.output_width / BLOCK_WIDTH) + 1;
+  rows = ceil(dinfo.output_height / BLOCK_HEIGHT);
+  columns = ceil(dinfo.output_width / BLOCK_WIDTH);
   rgb_copy = new struct rgb_block *[rows];
   for (int i = 0; i < rows; ++i)
     rgb_copy[i] = new rgb_block[columns];
@@ -982,7 +996,7 @@ static void encrypt_etc(
     jpeg_write_scanlines(&cinfo_blue, row_pointer, 1);
   }
 
-  LOGD("encrypt_etc finished");
+  LOGD("encrypt_etc finished cinfo_red.next_scanline=%d, image_height=%d", cinfo_red.next_scanline, cinfo_red.image_height);
 
 teardown:
   for (int i = 0; i < rows; ++i)
