@@ -589,19 +589,19 @@ static void unscramble_rgb(struct rgb_block **blocks,
     unsigned int rows,
     unsigned int columns) {
 
-  unsigned int indices[columns * rows];
+  int indices[columns * rows];
   std::default_random_engine generator;
 
   generator.seed(10000000);
 
   LOGD("unscramble_rgb rows=%d, columns=%d", rows, columns);
 
-  for (int i = columns * rows - 1; i >= 0; i--) {
+  for (int i = columns * rows - 1; i > 0; i--) {
     std::uniform_int_distribution<int> dist(0, i);
     indices[i] = dist(generator);
   }
 
-  for (int i = columns * rows - 1; i >= 0; i--) {
+  for (int i = 0; i < columns * rows; i++) {
     int j;
     struct rgb_block temp;
     int block_i_x = i % columns;
@@ -610,13 +610,14 @@ static void unscramble_rgb(struct rgb_block **blocks,
     int block_j_y;
 
     j = indices[i];
+    LOGD("unscramble_rgb rows=%d, i,j (%d, %d)", rows, i, j);
 
     block_j_x = j % columns;
     block_j_y = j / columns;
 
-    temp = blocks[block_j_y][block_j_x];
-    blocks[block_j_y][block_j_y] = blocks[block_i_y][block_i_x];
-    blocks[block_i_y][block_i_x] = temp;
+    temp = blocks[block_i_y][block_i_x];
+    blocks[block_i_y][block_i_x] = blocks[block_j_y][block_j_x];
+    blocks[block_j_y][block_j_x] = temp;
   }
 
   LOGD("unscramble_rgb finished");
@@ -713,6 +714,7 @@ void decryptJpegEtc(
   unsigned int columns;
   unsigned int row_stride;
   JSAMPLE *rgb_row; // JSAMPLE is char
+  JSAMPROW row_pointer[1];
 
   if (setjmp(error_handler.setjmpBuffer)) {
     return;
@@ -743,13 +745,13 @@ void decryptJpegEtc(
   cinfo.input_components = 3;
   cinfo.in_color_space = JCS_RGB;
   jpeg_set_defaults(&cinfo);
-  jpeg_set_quality(&cinfo, 85, TRUE);
+  jpeg_set_quality(&cinfo, 75, TRUE);
   jpeg_start_compress(&cinfo, TRUE);
 
   // Now write the scrambled RGB channels
-  row_stride = cinfo.image_width;
+  row_stride = cinfo.image_width * cinfo.input_components;
 
-  rgb_row = (JSAMPLE *) malloc(row_stride * sizeof(JSAMPLE) * cinfo.input_components);
+  rgb_row = (JSAMPLE *) malloc(row_stride * sizeof(JSAMPLE));
   if (rgb_row == NULL) {
     LOGE("decryptJpegEtc failed to allocate rgb_row");
     goto teardown;
@@ -757,13 +759,12 @@ void decryptJpegEtc(
 
   LOGD("decryptJpegEtc row_stride=%d, num_components=%d", row_stride, cinfo.num_components);
   while (cinfo.next_scanline < cinfo.image_height) {
-    JSAMPROW row_pointer[row_stride];
     int block_y = cinfo.next_scanline / BLOCK_HEIGHT;
     int pixel_y = cinfo.next_scanline % BLOCK_HEIGHT;
 
     for (int i = 0; i < row_stride; i++) {
-      int block_x = i / BLOCK_WIDTH;
-      int pixel_x = i % BLOCK_WIDTH;
+      int block_x = i / (cinfo.input_components * BLOCK_WIDTH); // buffer is R,G,B,R,G,B,...
+      int pixel_x = (i / cinfo.input_components) % BLOCK_WIDTH;
 
       rgb_row[i++] = rgb_copy[block_y][block_x].red[pixel_y][pixel_x];
       rgb_row[i++] = rgb_copy[block_y][block_x].green[pixel_y][pixel_x];

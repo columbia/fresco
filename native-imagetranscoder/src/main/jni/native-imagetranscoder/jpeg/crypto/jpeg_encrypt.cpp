@@ -806,7 +806,7 @@ static void scramble_rgb(struct rgb_block **blocks,
 
   LOGD("scramble_rgb rows=%d, columns=%d", rows, columns);
 
-  for (int i = columns * rows - 1; i >= 0; i--) {
+  for (int i = columns * rows - 1; i > 0; i--) {
     int j;
     struct rgb_block temp;
     int block_i_x = i % columns;
@@ -819,8 +819,6 @@ static void scramble_rgb(struct rgb_block **blocks,
 
     block_j_x = j % columns;
     block_j_y = j / columns;
-
-    //LOGD("scramble_rgb i=%d, j=%d, i (%d, %d), j (%d, %d)", i, j, block_i_x, block_i_y, block_j_x, block_j_y);
 
     temp = blocks[block_i_y][block_i_x];
     blocks[block_i_y][block_i_x] = blocks[block_j_y][block_j_x];
@@ -922,6 +920,7 @@ static void encrypt_etc(
   JSAMPLE *r_row; // JSAMPLE is char
   JSAMPLE *g_row; // JSAMPLE is char
   JSAMPLE *b_row; // JSAMPLE is char
+  JSAMPROW row_pointer[1];
 
   if (setjmp(error_handler.setjmpBuffer)) {
     return;
@@ -963,7 +962,6 @@ static void encrypt_etc(
 
   LOGD("encrypt_etc row_stride=%d, num_components=%d", row_stride, cinfo_red.num_components);
   while (cinfo_red.next_scanline < cinfo_red.image_height) {
-    JSAMPROW row_pointer[row_stride];
     int block_y = cinfo_red.next_scanline / BLOCK_HEIGHT;
     int pixel_y = cinfo_red.next_scanline % BLOCK_HEIGHT;
 
