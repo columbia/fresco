@@ -857,12 +857,6 @@ static void do_encrypt_etc(j_decompress_ptr dinfo,
     if (read_lines != 1)
       LOGE("do_encrypt_etc jpeg_read_scanlines didn't read even 1 line, output_scanline=%d / (height=%d)", dinfo->output_scanline, dinfo->output_height);
 
-    // For some reason the first line is garbage data, and output_scanline goes up to output_height
-    if (line == 0)
-      continue;
-
-    line -= 1;
-
     pixels = (unsigned char *) buffer[0];
     block_y = line / BLOCK_HEIGHT;
     pixel_y = line % BLOCK_HEIGHT;
@@ -885,7 +879,7 @@ static void do_encrypt_etc(j_decompress_ptr dinfo,
   }
 
   // Now scramble the copied RGB values
-  //scramble_rgb(rgb_copy, rows, columns);
+  scramble_rgb(rgb_copy, rows, columns);
 
   LOGD("do_encrypt_etc finished");
 }

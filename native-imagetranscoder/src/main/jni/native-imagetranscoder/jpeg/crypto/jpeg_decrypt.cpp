@@ -657,12 +657,6 @@ static void do_decrypt_etc(
     jpeg_read_scanlines(dinfo_green, buffer_green, 1);
     jpeg_read_scanlines(dinfo_blue, buffer_blue, 1);
 
-    // For some reason the first line is garbage data, and output_scanline goes up to output_height
-    if (line == 0)
-      continue;
-
-    line -= 1;
-
     pixels_red = (unsigned char *) buffer_red[0];
     pixels_green = (unsigned char *) buffer_green[0];
     pixels_blue = (unsigned char *) buffer_blue[0];
@@ -689,7 +683,7 @@ static void do_decrypt_etc(
   }
 
   // Now scramble the copied RGB values
-  //unscramble_rgb(rgb_copy, rows, columns);
+  unscramble_rgb(rgb_copy, rows, columns);
 
   LOGD("do_decrypt_etc finished");
 }
