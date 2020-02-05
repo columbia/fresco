@@ -42,6 +42,9 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.URL
 import java.util.*
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
+import kotlin.system.measureTimeMillis
 
 class DraweeEncryptFragment : BaseShowcaseFragment() {
 
@@ -84,13 +87,12 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         FLog.d(TAG, "downloadDir=$downloadDir, exists=${downloadDir!!.exists()}")
 
         mUri = sampleUris().createSampleUri()
-        mUri = Uri.parse("http://tri4.net/linksys/temp/r/420-converted/3563895151_5c02e2b8d6_o_420.jpg")
         mDraweeEncryptView = view.findViewById(R.id.drawee_view)
         mDraweeDecryptView = view.findViewById(R.id.drawee_decrypt)
         mDraweeDecryptDiskView = view.findViewById(R.id.drawee_decrypt_disk)
         setNewKey()
 
-        setEncryptOptions()
+        //setEncryptOptions()
 
         view.findViewById<View>(R.id.btn_random_uri)
                 .setOnClickListener {
@@ -480,12 +482,17 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
                                 val fileOutputStreamGreen = FileOutputStream(outputFileGreen)
                                 val fileOutputStreamBlue = FileOutputStream(outputFileBlue)
 
-                                encryptor.encryptEtc(encodedImage, fileOutputStream, fileOutputStreamGreen, fileOutputStreamBlue, lastKey)
-                                FLog.d(TAG, "Wrote %s encryptEtc Red to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
-                                FLog.d(TAG, "Wrote %s encryptEtc Green to %s (size: %s bytes)", mUri, outputFileGreen.absolutePath, outputFileGreen.length() / 8)
-                                FLog.d(TAG, "Wrote %s encryptEtc Blue to %s (size: %s bytes)", mUri, outputFileBlue.absolutePath, outputFileBlue.length() / 8)
-                                scanFile(outputFileGreen.absolutePath)
-                                scanFile(outputFileBlue.absolutePath)
+                                CRYPTO_LOCK.withLock {
+                                    val encryptTime = measureTimeMillis {
+                                        encryptor.encryptEtc(encodedImage, fileOutputStream, fileOutputStreamGreen, fileOutputStreamBlue, lastKey)
+                                    }
+                                    FLog.d(TAG, "Wrote %s encryptEtc Red to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
+                                    FLog.d(TAG, "Wrote %s encryptEtc Green to %s (size: %s bytes)", mUri, outputFileGreen.absolutePath, outputFileGreen.length() / 8)
+                                    FLog.d(TAG, "Wrote %s encryptEtc Blue to %s (size: %s bytes)", mUri, outputFileBlue.absolutePath, outputFileBlue.length() / 8)
+                                    FLog.d(TAG, "encryptEtc encryptTime=$encryptTime ($outputImageFile)")
+                                    scanFile(outputFileGreen.absolutePath)
+                                    scanFile(outputFileBlue.absolutePath)
+                                }
 
                                 Closeables.close(fileOutputStreamGreen, true)
                                 Closeables.close(fileOutputStreamBlue, true)
@@ -494,7 +501,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
                                 FLog.d(TAG, "Wrote %s encrypted to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
                             }
 
-                            scanFile(outputImageFile.absolutePath)
+                            scanFile(outputImageFile!!.absolutePath)
 
                             Closeables.close(fileOutputStream, true)
                         } catch (e: IOException) {
@@ -555,7 +562,13 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
                     val encodedImageGreen = EncodedImage(refGreen)
                     val encodedImageBlue = EncodedImage(refBlue)
                     FLog.d(TAG, "decryptDataSourceToDisk invoking decryptEtc()")
-                    decryptor.decryptEtc(encodedImage, encodedImageGreen, encodedImageBlue, fileOutputStream, lastKey)
+                    CRYPTO_LOCK.withLock {
+                        val decryptTime = measureTimeMillis {
+                            decryptor.decryptEtc(encodedImage, encodedImageGreen, encodedImageBlue, fileOutputStream, lastKey)
+                        }
+
+                        FLog.d(TAG, "decryptDataSourceToDisk decryptEtc() decryptTime=$decryptTime ($outputFile)")
+                    }
                 } else {
                     decryptor.decrypt(encodedImage, fileOutputStream, lastKey)
                 }
@@ -656,6 +669,10 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
     override fun getTitleId(): Int {
         return R.string.drawee_encrypt_title
+    }
+
+    companion object {
+        private val CRYPTO_LOCK = ReentrantLock()
     }
 
     data class ImageTrio(var redFile: File,
