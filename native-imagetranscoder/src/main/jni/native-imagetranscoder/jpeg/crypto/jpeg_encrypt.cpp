@@ -840,10 +840,6 @@ static void scramble_rgb(struct rgb_block **blocks,
     memcpy(&temp, &blocks[block_i_y][block_i_x].blue, BLOCK_HEIGHT * BLOCK_WIDTH);
     memcpy(&blocks[block_i_y][block_i_x].blue, &blocks[block_j_y][block_j_x].blue, BLOCK_HEIGHT * BLOCK_WIDTH);
     memcpy(&blocks[block_j_y][block_j_x].blue, &temp, BLOCK_HEIGHT * BLOCK_WIDTH);
-
-    //temp = blocks[block_i_y][block_i_x];
-    //blocks[block_i_y][block_i_x] = blocks[block_j_y][block_j_x];
-    //blocks[block_j_y][block_j_x] = temp;
   }
 
   LOGD("scramble_rgb finished");
