@@ -689,7 +689,7 @@ static void do_decrypt_etc(
   }
 
   // Now scramble the copied RGB values
-  unscramble_rgb(rgb_copy, rows, columns);
+  //unscramble_rgb(rgb_copy, rows, columns);
 
   LOGD("do_decrypt_etc finished");
 }
@@ -765,12 +765,14 @@ void decryptJpegEtc(
 
   LOGD("decryptJpegEtc row_stride=%d, num_components=%d", row_stride, cinfo.num_components);
   while (cinfo.next_scanline < cinfo.image_height) {
+    int block_x;
+    int pixel_x;
     int block_y = cinfo.next_scanline / BLOCK_HEIGHT;
     int pixel_y = cinfo.next_scanline % BLOCK_HEIGHT;
 
     for (int i = 0; i < row_stride; i++) {
-      int block_x = i / (cinfo.input_components * BLOCK_WIDTH); // buffer is R,G,B,R,G,B,...
-      int pixel_x = (i / cinfo.input_components) % BLOCK_WIDTH;
+      block_x = i / (cinfo.input_components * BLOCK_WIDTH); // buffer is R,G,B,R,G,B,...
+      pixel_x = (i / cinfo.input_components) % BLOCK_WIDTH;
 
       rgb_row[i++] = rgb_copy[block_y][block_x].red[pixel_y][pixel_x];
       rgb_row[i++] = rgb_copy[block_y][block_x].green[pixel_y][pixel_x];
