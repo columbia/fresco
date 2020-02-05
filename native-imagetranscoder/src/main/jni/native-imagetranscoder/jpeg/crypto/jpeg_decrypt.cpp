@@ -585,41 +585,75 @@ teardown:
   jpeg_destroy_decompress(&dinfo);
 }
 
-static void unscramble_rgb(struct rgb_block **blocks,
+static int unscramble_rgb(struct rgb_block **blocks,
     unsigned int rows,
     unsigned int columns) {
 
-  int indices[columns * rows];
-  std::default_random_engine generator;
+  int *indices_red;
+  int *indices_green;
+  int *indices_blue;
+  std::default_random_engine gen_red;
+  std::default_random_engine gen_green;
+  std::default_random_engine gen_blue;
 
-  generator.seed(10000000);
+  gen_red.seed(10000000);
+  gen_green.seed(20000000);
+  gen_blue.seed(30000000);
 
-  LOGD("unscramble_rgb rows=%d, columns=%d", rows, columns);
+  indices_red = (int *) malloc(columns * rows * sizeof(int));
+  indices_green = (int *) malloc(columns * rows * sizeof(int));
+  indices_blue = (int *) malloc(columns * rows * sizeof(int));
+  if (indices_red == NULL || indices_green == NULL || indices_blue == NULL) {
+    LOGE("unscramble_rgb failed to allocate indices_red/green/blue");
+    return 1;
+  }
 
   for (int i = columns * rows - 1; i >= 0; i--) {
     std::uniform_int_distribution<int> dist(0, i);
-    indices[i] = dist(generator);
+
+    indices_red[i] = dist(gen_red);
+    indices_green[i] = dist(gen_green);
+    indices_blue[i] = dist(gen_blue);
   }
+  LOGD("unscramble_rgb rows=%d, columns=%d", rows, columns);
 
   for (int i = 0; i < columns * rows; i++) {
     int j;
-    struct rgb_block temp;
+    char temp[BLOCK_HEIGHT][BLOCK_WIDTH];
     int block_i_x = i % columns;
     int block_i_y = i / columns;
     int block_j_x;
     int block_j_y;
 
-    j = indices[i];
-
+    j = indices_red[i];
     block_j_x = j % columns;
     block_j_y = j / columns;
+    memcpy(&temp, &blocks[block_i_y][block_i_x].red, BLOCK_HEIGHT * BLOCK_WIDTH);
+    memcpy(&blocks[block_i_y][block_i_x].red, &blocks[block_j_y][block_j_x].red, BLOCK_HEIGHT * BLOCK_WIDTH);
+    memcpy(&blocks[block_j_y][block_j_x].red, &temp, BLOCK_HEIGHT * BLOCK_WIDTH);
 
-    temp = blocks[block_i_y][block_i_x];
-    blocks[block_i_y][block_i_x] = blocks[block_j_y][block_j_x];
-    blocks[block_j_y][block_j_x] = temp;
+    j = indices_green[i];
+    block_j_x = j % columns;
+    block_j_y = j / columns;
+    memcpy(&temp, &blocks[block_i_y][block_i_x].green, BLOCK_HEIGHT * BLOCK_WIDTH);
+    memcpy(&blocks[block_i_y][block_i_x].green, &blocks[block_j_y][block_j_x].green, BLOCK_HEIGHT * BLOCK_WIDTH);
+    memcpy(&blocks[block_j_y][block_j_x].green, &temp, BLOCK_HEIGHT * BLOCK_WIDTH);
+
+    j = indices_blue[i];
+    block_j_x = j % columns;
+    block_j_y = j / columns;
+    memcpy(&temp, &blocks[block_i_y][block_i_x].blue, BLOCK_HEIGHT * BLOCK_WIDTH);
+    memcpy(&blocks[block_i_y][block_i_x].blue, &blocks[block_j_y][block_j_x].blue, BLOCK_HEIGHT * BLOCK_WIDTH);
+    memcpy(&blocks[block_j_y][block_j_x].blue, &temp, BLOCK_HEIGHT * BLOCK_WIDTH);
   }
 
+  free(indices_red);
+  free(indices_green);
+  free(indices_blue);
+
   LOGD("unscramble_rgb finished");
+
+  return 0;
 }
 
 static void do_decrypt_etc(

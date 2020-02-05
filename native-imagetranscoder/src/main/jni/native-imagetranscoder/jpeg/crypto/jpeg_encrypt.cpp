@@ -800,29 +800,50 @@ static void scramble_rgb(struct rgb_block **blocks,
     unsigned int rows,
     unsigned int columns) {
 
-  std::default_random_engine generator;
+  std::default_random_engine gen_red;
+  std::default_random_engine gen_green;
+  std::default_random_engine gen_blue;
 
-  generator.seed(10000000);
+  gen_red.seed(10000000);
+  gen_green.seed(20000000);
+  gen_blue.seed(30000000);
 
   LOGD("scramble_rgb rows=%d, columns=%d", rows, columns);
 
   for (int i = columns * rows - 1; i >= 0; i--) {
     int j;
-    struct rgb_block temp;
+    char temp[BLOCK_HEIGHT][BLOCK_WIDTH];
     int block_i_x = i % columns;
     int block_i_y = i / columns;
     int block_j_x;
     int block_j_y;
 
     std::uniform_int_distribution<int> dist(0, i);
-    j = dist(generator);
 
+    j = dist(gen_red);
     block_j_x = j % columns;
     block_j_y = j / columns;
+    memcpy(&temp, &blocks[block_i_y][block_i_x].red, BLOCK_HEIGHT * BLOCK_WIDTH);
+    memcpy(&blocks[block_i_y][block_i_x].red, &blocks[block_j_y][block_j_x].red, BLOCK_HEIGHT * BLOCK_WIDTH);
+    memcpy(&blocks[block_j_y][block_j_x].red, &temp, BLOCK_HEIGHT * BLOCK_WIDTH);
 
-    temp = blocks[block_i_y][block_i_x];
-    blocks[block_i_y][block_i_x] = blocks[block_j_y][block_j_x];
-    blocks[block_j_y][block_j_x] = temp;
+    j = dist(gen_green);
+    block_j_x = j % columns;
+    block_j_y = j / columns;
+    memcpy(&temp, &blocks[block_i_y][block_i_x].green, BLOCK_HEIGHT * BLOCK_WIDTH);
+    memcpy(&blocks[block_i_y][block_i_x].green, &blocks[block_j_y][block_j_x].green, BLOCK_HEIGHT * BLOCK_WIDTH);
+    memcpy(&blocks[block_j_y][block_j_x].green, &temp, BLOCK_HEIGHT * BLOCK_WIDTH);
+
+    j = dist(gen_blue);
+    block_j_x = j % columns;
+    block_j_y = j / columns;
+    memcpy(&temp, &blocks[block_i_y][block_i_x].blue, BLOCK_HEIGHT * BLOCK_WIDTH);
+    memcpy(&blocks[block_i_y][block_i_x].blue, &blocks[block_j_y][block_j_x].blue, BLOCK_HEIGHT * BLOCK_WIDTH);
+    memcpy(&blocks[block_j_y][block_j_x].blue, &temp, BLOCK_HEIGHT * BLOCK_WIDTH);
+
+    //temp = blocks[block_i_y][block_i_x];
+    //blocks[block_i_y][block_i_x] = blocks[block_j_y][block_j_x];
+    //blocks[block_j_y][block_j_x] = temp;
   }
 
   LOGD("scramble_rgb finished");
