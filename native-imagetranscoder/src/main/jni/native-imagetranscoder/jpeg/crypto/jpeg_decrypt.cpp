@@ -596,7 +596,7 @@ static void unscramble_rgb(struct rgb_block **blocks,
 
   LOGD("unscramble_rgb rows=%d, columns=%d", rows, columns);
 
-  for (int i = columns * rows - 1; i > 0; i--) {
+  for (int i = columns * rows - 1; i >= 0; i--) {
     std::uniform_int_distribution<int> dist(0, i);
     indices[i] = dist(generator);
   }
