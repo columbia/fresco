@@ -22,6 +22,7 @@ extern "C" {
 #include "jpeg/jpeg_codec.h"
 #include "jpeg_crypto.h"
 #include "jpeg_decrypt.h"
+#include "rand.h"
 
 namespace facebook {
 namespace imagepipeline {
@@ -587,7 +588,10 @@ teardown:
 
 static int unscramble_rgb(struct rgb_block **blocks,
     unsigned int rows,
-    unsigned int columns) {
+    unsigned int columns,
+    unsigned long seed_r,
+    unsigned long seed_g,
+    unsigned long seed_b) {
 
   int *indices_red;
   int *indices_green;
@@ -596,9 +600,9 @@ static int unscramble_rgb(struct rgb_block **blocks,
   std::default_random_engine gen_green;
   std::default_random_engine gen_blue;
 
-  gen_red.seed(10000000);
-  gen_green.seed(20000000);
-  gen_blue.seed(30000000);
+  gen_red.seed(seed_r);
+  gen_green.seed(seed_g);
+  gen_blue.seed(seed_b);
 
   indices_red = (int *) malloc(columns * rows * sizeof(int));
   indices_green = (int *) malloc(columns * rows * sizeof(int));
@@ -662,7 +666,10 @@ static void do_decrypt_etc(
     j_decompress_ptr dinfo_blue,
     struct rgb_block **rgb_copy,
     unsigned int rows,
-    unsigned int columns) {
+    unsigned int columns,
+    unsigned long seed_r,
+    unsigned long seed_g,
+    unsigned long seed_b) {
   JSAMPARRAY buffer_red;
   JSAMPARRAY buffer_green;
   JSAMPARRAY buffer_blue;
@@ -702,9 +709,6 @@ static void do_decrypt_etc(
       int block_x = i / (dinfo_red->output_components * BLOCK_WIDTH);
       int pixel_x = (i / dinfo_red->output_components) % BLOCK_WIDTH;
 
-      // if (block_x >= columns || block_y >= rows || pixel_x >= BLOCK_WIDTH || pixel_y >= BLOCK_HEIGHT)
-        //LOGD("do_encrypt_etc (%d, %d) / (%d, %d)", block_x, block_y, pixel_x, pixel_y);
-
       rgb_copy[block_y][block_x].red[pixel_y][pixel_x] = *pixels_red;
       rgb_copy[block_y][block_x].green[pixel_y][pixel_x] = *pixels_green;
       rgb_copy[block_y][block_x].blue[pixel_y][pixel_x] = *pixels_blue;
@@ -717,7 +721,7 @@ static void do_decrypt_etc(
   }
 
   // Now scramble the copied RGB values
-  unscramble_rgb(rgb_copy, rows, columns);
+  unscramble_rgb(rgb_copy, rows, columns, seed_r, seed_g, seed_b);
 
   LOGD("do_decrypt_etc finished");
 }
@@ -749,6 +753,16 @@ void decryptJpegEtc(
   unsigned int row_stride;
   JSAMPLE *rgb_row; // JSAMPLE is char
   JSAMPROW row_pointer[1];
+  unsigned long seed_r = 10000000;
+  unsigned long seed_g = 20000000;
+  unsigned long seed_b = 30000000;
+  std::string isaac_seed_r;
+  std::string isaac_seed_g;
+  std::string isaac_seed_b;
+  unsigned int isaac_i = 0;
+  randctx ctx_r;
+  randctx ctx_g;
+  randctx ctx_b;
 
   if (setjmp(error_handler.setjmpBuffer)) {
     return;
@@ -772,7 +786,7 @@ void decryptJpegEtc(
   for (int i = 0; i < rows; ++i)
     rgb_copy[i] = new rgb_block[columns];
 
-  do_decrypt_etc(&dinfo_red, &dinfo_green, &dinfo_blue, rgb_copy, rows, columns);
+  do_decrypt_etc(&dinfo_red, &dinfo_green, &dinfo_blue, rgb_copy, rows, columns, seed_r, seed_g, seed_b);
 
   // Decrypt done, write result out
   initCompressStruct(cinfo, dinfo_red, error_handler, dest);
@@ -791,20 +805,74 @@ void decryptJpegEtc(
     goto teardown;
   }
 
+  isaac_seed_r = compute_isaac_seed(seed_r, seed_g, seed_b);
+  isaac_seed_g = compute_isaac_seed(seed_g, seed_r, seed_b);
+  isaac_seed_b = compute_isaac_seed(seed_b, seed_r, seed_g);
+
+  // Initialize ISAAC seed
+  ctx_r.randa = ctx_r.randb = ctx_r.randc = (ub4) 0;
+  ctx_g.randa = ctx_g.randb = ctx_g.randc = (ub4) 0;
+  ctx_b.randa = ctx_b.randb = ctx_b.randc = (ub4) 0;
+  for (int i = 0; i < RANDSIZ; i++) {
+    ctx_r.randrsl[i] = isaac_seed_r[i];
+    ctx_g.randrsl[i] = isaac_seed_g[i];
+    ctx_b.randrsl[i] = isaac_seed_b[i];
+  }
+  randinit(&ctx_r, 1);
+  randinit(&ctx_g, 1);
+  randinit(&ctx_b, 1);
+
   LOGD("decryptJpegEtc row_stride=%d, num_components=%d", row_stride, cinfo.num_components);
   while (cinfo.next_scanline < cinfo.image_height) {
     int block_x;
     int pixel_x;
     int block_y = cinfo.next_scanline / BLOCK_HEIGHT;
     int pixel_y = cinfo.next_scanline % BLOCK_HEIGHT;
+    char pixel;
 
     for (int i = 0; i < row_stride; i++) {
+      int xor_val = 0;
+
       block_x = i / (cinfo.input_components * BLOCK_WIDTH); // buffer is R,G,B,R,G,B,...
       pixel_x = (i / cinfo.input_components) % BLOCK_WIDTH;
 
-      rgb_row[i++] = rgb_copy[block_y][block_x].red[pixel_y][pixel_x];
-      rgb_row[i++] = rgb_copy[block_y][block_x].green[pixel_y][pixel_x];
-      rgb_row[i] = rgb_copy[block_y][block_x].blue[pixel_y][pixel_x];
+      //rgb_row[i++] = rgb_copy[block_y][block_x].red[pixel_y][pixel_x];
+      //rgb_row[i++] = rgb_copy[block_y][block_x].green[pixel_y][pixel_x];
+      //rgb_row[i] = rgb_copy[block_y][block_x].blue[pixel_y][pixel_x];
+
+      if (isaac_i % 2048 == 0) {
+        isaac(&ctx_r);
+        isaac(&ctx_g);
+        isaac(&ctx_b);
+      }
+
+      // Invert the pixel diffusion
+      // Pixel diffusion - red
+      if (std::bitset<8>(ctx_r.randrsl[isaac_i % 256]).test(isaac_i % 8))
+        xor_val = 255;
+      pixel = rgb_copy[block_y][block_x].red[pixel_y][pixel_x];
+      pixel = pixel ^ xor_val;
+      rgb_row[i++] = pixel;
+
+      // Pixel diffusion - green
+      if (std::bitset<8>(ctx_g.randrsl[isaac_i % 256]).test(isaac_i % 8))
+        xor_val = 255;
+      else
+        xor_val = 0;
+      pixel = rgb_copy[block_y][block_x].green[pixel_y][pixel_x];
+      pixel = pixel ^ xor_val;
+      rgb_row[i++] = pixel;
+
+      // Pixel diffusion - blue
+      if (std::bitset<8>(ctx_b.randrsl[isaac_i % 256]).test(isaac_i % 8))
+        xor_val = 255;
+      else
+        xor_val = 0;
+      pixel = rgb_copy[block_y][block_x].blue[pixel_y][pixel_x];
+      pixel = pixel ^ xor_val;
+      rgb_row[i] = pixel;
+
+      isaac_i++;
     }
 
     row_pointer[0] = rgb_row;

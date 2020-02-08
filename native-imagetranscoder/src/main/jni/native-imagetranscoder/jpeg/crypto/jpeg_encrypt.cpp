@@ -22,6 +22,7 @@ extern "C" {
 #include "jpeg/jpeg_codec.h"
 #include "jpeg_crypto.h"
 #include "jpeg_encrypt.h"
+#include "rand.h"
 
 namespace facebook {
 namespace imagepipeline {
@@ -798,15 +799,18 @@ teardown:
 /////////////
 static void scramble_rgb(struct rgb_block **blocks,
     unsigned int rows,
-    unsigned int columns) {
+    unsigned int columns,
+    unsigned long seed_r,
+    unsigned long seed_g,
+    unsigned long seed_b) {
 
   std::default_random_engine gen_red;
   std::default_random_engine gen_green;
   std::default_random_engine gen_blue;
 
-  gen_red.seed(10000000);
-  gen_green.seed(20000000);
-  gen_blue.seed(30000000);
+  gen_red.seed(seed_r);
+  gen_green.seed(seed_g);
+  gen_blue.seed(seed_b);
 
   LOGD("scramble_rgb rows=%d, columns=%d", rows, columns);
 
@@ -851,6 +855,33 @@ static void do_encrypt_etc(j_decompress_ptr dinfo,
     unsigned int columns) {
   JSAMPARRAY buffer;            /* Output row buffer */
   int row_stride;               /* physical row width in output buffer */
+  unsigned long seed_r = 10000000;
+  unsigned long seed_g = 20000000;
+  unsigned long seed_b = 30000000;
+  std::string isaac_seed_r;
+  std::string isaac_seed_g;
+  std::string isaac_seed_b;
+  unsigned int isaac_i = 0;
+  randctx ctx_r;
+  randctx ctx_g;
+  randctx ctx_b;
+
+  isaac_seed_r = compute_isaac_seed(seed_r, seed_g, seed_b);
+  isaac_seed_g = compute_isaac_seed(seed_g, seed_r, seed_b);
+  isaac_seed_b = compute_isaac_seed(seed_b, seed_r, seed_g);
+
+  // Initialize ISAAC seed
+  ctx_r.randa = ctx_r.randb = ctx_r.randc = (ub4) 0;
+  ctx_g.randa = ctx_g.randb = ctx_g.randc = (ub4) 0;
+  ctx_b.randa = ctx_b.randb = ctx_b.randc = (ub4) 0;
+  for (int i = 0; i < RANDSIZ; i++) {
+    ctx_r.randrsl[i] = isaac_seed_r[i];
+    ctx_g.randrsl[i] = isaac_seed_g[i];
+    ctx_b.randrsl[i] = isaac_seed_b[i];
+  }
+  randinit(&ctx_r, 1);
+  randinit(&ctx_g, 1);
+  randinit(&ctx_b, 1);
 
   // make an output work buffer of the right size.
   // JSAMPLEs per row in output buffer
@@ -881,22 +912,51 @@ static void do_encrypt_etc(j_decompress_ptr dinfo,
     for (int i = 0; i < row_stride; i += dinfo->output_components) {
       int block_x = i / (dinfo->output_components * BLOCK_WIDTH); // buffer is R,G,B,X,R,G,B,X,...
       int pixel_x = (i / dinfo->output_components) % BLOCK_WIDTH;
+      char pixel;
+      int xor_val = 0;
 
-      if (block_x >= columns || block_y >= rows)
-        LOGD("do_encrypt_etc 1 (%d, %d) output_scanline=%d, line=%d / (%d, %d)", block_x, block_y, dinfo->output_scanline, line, pixel_x, pixel_y);
+      if (isaac_i % 2048 == 0) {
+        isaac(&ctx_r);
+        isaac(&ctx_g);
+        isaac(&ctx_b);
+      }
 
-      rgb_copy[block_y][block_x].red[pixel_y][pixel_x] = *pixels++;
-      rgb_copy[block_y][block_x].green[pixel_y][pixel_x] = *pixels++;
-      rgb_copy[block_y][block_x].blue[pixel_y][pixel_x] = *pixels++;
+      // Pixel diffusion - red
+      if (std::bitset<8>(ctx_r.randrsl[isaac_i % 256]).test(isaac_i % 8))
+        xor_val = 255;
+
+      pixel = *pixels++;
+      pixel = pixel ^ xor_val;
+      rgb_copy[block_y][block_x].red[pixel_y][pixel_x] = pixel;
+
+      // Pixel diffusion - green
+      if (std::bitset<8>(ctx_g.randrsl[isaac_i % 256]).test(isaac_i % 8))
+        xor_val = 255;
+      else
+        xor_val = 0;
+
+      pixel = *pixels++;
+      pixel = pixel ^ xor_val;
+      rgb_copy[block_y][block_x].green[pixel_y][pixel_x] = pixel;
+
+      // Pixel diffusion - blue
+      if (std::bitset<8>(ctx_b.randrsl[isaac_i % 256]).test(isaac_i % 8))
+        xor_val = 255;
+      else
+        xor_val = 0;
+
+      pixel = *pixels++;
+      pixel = pixel ^ xor_val;
+      rgb_copy[block_y][block_x].blue[pixel_y][pixel_x] = pixel;
+
       pixels += (dinfo->output_components - 3); // Might be using RGBX so there's an extra byte
 
-      if (block_x >= columns || block_y >= rows)
-              LOGD("do_encrypt_etc 2 (%d, %d) output_scanline=%d / (%d, %d)", block_x, block_y, dinfo->output_scanline, pixel_x, pixel_y);
+      isaac_i++;
     }
   }
 
   // Now scramble the copied RGB values
-  scramble_rgb(rgb_copy, rows, columns);
+  scramble_rgb(rgb_copy, rows, columns, seed_r, seed_g, seed_b);
 
   LOGD("do_encrypt_etc finished");
 }

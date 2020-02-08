@@ -363,6 +363,21 @@ void diffuseACs(
   mpf_clears(dc_coeff, alpha_part, dc_alpha_part, beta_part, xor_component_mpf, NULL);
 }
 
+std::string compute_isaac_seed(unsigned long main_seed, unsigned long other_seed1, unsigned long other_seed2) {
+  std::string concat_hashes_r;
+  std::string concat_hashes_r2;
+
+  // 256 bytes
+  concat_hashes_r.append(sw::sha512::calculate(std::to_string(main_seed)));
+  concat_hashes_r2.append(sw::sha512::calculate(std::to_string(other_seed1)));
+  concat_hashes_r2.append(sw::sha512::calculate(std::to_string(other_seed2)));
+  concat_hashes_r.append(sw::sha512::calculate(concat_hashes_r2)); // H_0 (128 bytes)
+  concat_hashes_r.append(sw::sha512::calculate(concat_hashes_r)); // 192 bytes
+  concat_hashes_r.append(sw::sha512::calculate(concat_hashes_r)); // 256 bytes
+
+  return concat_hashes_r;
+}
+
 void diffuseACsFlipSigns(
     j_decompress_ptr dinfo,
     jvirt_barray_ptr* src_coefs,

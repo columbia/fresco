@@ -94,6 +94,8 @@ void construct_alpha_beta(mpf_t output, const char *input, int input_len);
 
 int sameSign(JCOEF a, JCOEF b);
 
+std::string compute_isaac_seed(unsigned long main_seed, unsigned long other_seed1, unsigned long other_seed2);
+
 } } } }
 
 #endif //FRESCO_JPEG_CRYPTO_H
