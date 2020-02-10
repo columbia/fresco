@@ -904,7 +904,9 @@ static void do_encrypt_etc(j_decompress_ptr dinfo,
 static void initialize_grayscale_compress(struct jpeg_compress_struct& cinfo,
     struct jpeg_decompress_struct& dinfo,
     JpegErrorHandler& error_handler,
-    struct jpeg_destination_mgr& destination) {
+    struct jpeg_destination_mgr& destination,
+    int rounded_width,
+    int rounded_height) {
   initCompressStruct(cinfo, dinfo, error_handler, destination);
   // initialize with default params, then copy the ones needed for lossless transcoding
   //jpeg_copy_critical_parameters(&dinfo, &cinfo);
@@ -913,6 +915,8 @@ static void initialize_grayscale_compress(struct jpeg_compress_struct& cinfo,
   cinfo.in_color_space = JCS_GRAYSCALE;
   cinfo.input_components = 1;
   cinfo.num_components = 1;
+  cinfo.image_width = rounded_width;
+  cinfo.image_height = rounded_height;
   jpeg_set_defaults(&cinfo);
   jpeg_set_quality(&cinfo, 85, TRUE);
 }
@@ -978,14 +982,13 @@ static void encrypt_etc(
     }
   }
 
-
   do_encrypt_etc(&dinfo, rgb_copy, rows, columns);
 
   // Now ready to write the output compressed JPEG
   // create compress struct
-  initialize_grayscale_compress(cinfo_red, dinfo, error_handler, dest_red);
-  initialize_grayscale_compress(cinfo_green, dinfo, error_handler, dest_green);
-  initialize_grayscale_compress(cinfo_blue, dinfo, error_handler, dest_blue);
+  initialize_grayscale_compress(cinfo_red, dinfo, error_handler, dest_red, rounded_width, rounded_height);
+  initialize_grayscale_compress(cinfo_green, dinfo, error_handler, dest_green, rounded_width, rounded_height);
+  initialize_grayscale_compress(cinfo_blue, dinfo, error_handler, dest_blue, rounded_width, rounded_height);
   jpeg_start_compress(&cinfo_red, TRUE);
   jpeg_start_compress(&cinfo_green, TRUE);
   jpeg_start_compress(&cinfo_blue, TRUE);
