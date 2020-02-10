@@ -449,6 +449,15 @@ void diffuseACsFlipSigns(
   }
 }
 
+int round_up_to_multiple(int input, int multiple) {
+  int remainder = input % multiple;
+
+  if (remainder == 0)
+    return input;
+
+  return input + multiple - remainder;
+}
+
 float scaleToRange(float input, float input_min, float input_max, float scale_min, float scale_max) {
   return (scale_max - scale_min) * (input - input_min) / (input_max - input_min) + scale_min;
 }

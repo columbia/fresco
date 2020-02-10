@@ -946,6 +946,8 @@ static void encrypt_etc(
   JSAMPLE *g_row; // JSAMPLE is char
   JSAMPLE *b_row; // JSAMPLE is char
   JSAMPROW row_pointer[1];
+  int rounded_width;
+  int rounded_height;
 
   if (setjmp(error_handler.setjmpBuffer)) {
     return;
@@ -957,11 +959,25 @@ static void encrypt_etc(
 
   jpeg_start_decompress(&dinfo);
 
-  rows = ceil(dinfo.output_height / BLOCK_HEIGHT);
-  columns = ceil(dinfo.output_width / BLOCK_WIDTH);
+  rounded_height = round_up_to_multiple(dinfo.output_height, 8);
+  rounded_width = round_up_to_multiple(dinfo.output_width, 8);
+
+  rows = ceil(rounded_height / BLOCK_HEIGHT);
+  columns = ceil(rounded_width / BLOCK_WIDTH);
   rgb_copy = new struct rgb_block *[rows];
-  for (int i = 0; i < rows; ++i)
-    rgb_copy[i] = new rgb_block[columns];
+  for (int y = 0; y < rows; ++y) {
+    rgb_copy[y] = new rgb_block[columns];
+
+    // Set the far right block to 0 for every row since it might be padding
+    memset(&rgb_copy[y][columns - 1], 0, sizeof(struct rgb_block));
+
+    // Set entire bottom-most row to 0 since it might be padding
+    if (y == rows - 1) {
+      for (int x = 0; x < columns; ++x)
+        memset(&rgb_copy[y][x], 0, sizeof(struct rgb_block));
+    }
+  }
+
 
   do_encrypt_etc(&dinfo, rgb_copy, rows, columns);
 

@@ -94,6 +94,8 @@ void construct_alpha_beta(mpf_t output, const char *input, int input_len);
 
 int sameSign(JCOEF a, JCOEF b);
 
+int round_up_to_multiple(int input, int multiple);
+
 } } } }
 
 #endif //FRESCO_JPEG_CRYPTO_H
