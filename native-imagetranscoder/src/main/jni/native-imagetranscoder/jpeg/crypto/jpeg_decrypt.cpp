@@ -749,6 +749,8 @@ void decryptJpegEtc(
   unsigned int row_stride;
   JSAMPLE *rgb_row; // JSAMPLE is char
   JSAMPROW row_pointer[1];
+  int rounded_width;
+  int rounded_height;
 
   if (setjmp(error_handler.setjmpBuffer)) {
     return;
@@ -764,13 +766,26 @@ void decryptJpegEtc(
   jpeg_start_decompress(&dinfo_green);
   jpeg_start_decompress(&dinfo_blue);
 
+  rounded_height = round_up_to_multiple(dinfo_red.output_height, 8);
+  rounded_width = round_up_to_multiple(dinfo_red.output_width, 8);
+
   LOGD("decryptJpegEtc started decompress");
 
-  rows = ceil(dinfo_red.output_height / BLOCK_HEIGHT);
-  columns = ceil(dinfo_red.output_width / BLOCK_WIDTH);
+  rows = ceil(rounded_height / BLOCK_HEIGHT);
+  columns = ceil(rounded_width / BLOCK_WIDTH);
   rgb_copy = new struct rgb_block *[rows];
-  for (int i = 0; i < rows; ++i)
-    rgb_copy[i] = new rgb_block[columns];
+  for (int y = 0; y < rows; ++y) {
+    rgb_copy[y] = new rgb_block[columns];
+
+    // Set the far right block to 0 for every row since it might be padding
+    memset(&rgb_copy[y][columns - 1], 0, sizeof(struct rgb_block));
+
+    // Set entire bottom-most row to 0 since it might be padding
+    if (y == rows - 1) {
+      for (int x = 0; x < columns; ++x)
+        memset(&rgb_copy[y][x], 0, sizeof(struct rgb_block));
+    }
+  }
 
   do_decrypt_etc(&dinfo_red, &dinfo_green, &dinfo_blue, rgb_copy, rows, columns);
 
