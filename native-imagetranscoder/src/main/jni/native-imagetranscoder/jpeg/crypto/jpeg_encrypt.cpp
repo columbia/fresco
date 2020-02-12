@@ -803,43 +803,56 @@ static void scramble_rgb(struct rgb_block **blocks,
   std::default_random_engine gen_red;
   std::default_random_engine gen_green;
   std::default_random_engine gen_blue;
+  std::default_random_engine gen_inter;
+  std::uniform_int_distribution<int> inter_dist(0, 2);
 
   gen_red.seed(10000000);
   gen_green.seed(20000000);
   gen_blue.seed(30000000);
+  gen_inter.seed(10000000 ^ 20000000 ^ 30000000);
 
   LOGD("scramble_rgb rows=%d, columns=%d", rows, columns);
 
   for (int i = columns * rows - 1; i >= 0; i--) {
     int j;
-    char temp[BLOCK_HEIGHT][BLOCK_WIDTH];
     int block_i_x = i % columns;
     int block_i_y = i / columns;
     int block_j_x;
     int block_j_y;
+    int inter_shuffle;
 
     std::uniform_int_distribution<int> dist(0, i);
 
     j = dist(gen_red);
     block_j_x = j % columns;
     block_j_y = j / columns;
-    memcpy(&temp, &blocks[block_i_y][block_i_x].red, BLOCK_HEIGHT * BLOCK_WIDTH);
-    memcpy(&blocks[block_i_y][block_i_x].red, &blocks[block_j_y][block_j_x].red, BLOCK_HEIGHT * BLOCK_WIDTH);
-    memcpy(&blocks[block_j_y][block_j_x].red, &temp, BLOCK_HEIGHT * BLOCK_WIDTH);
+    std::swap(blocks[block_i_y][block_i_x].red, blocks[block_j_y][block_j_x].red);
 
     j = dist(gen_green);
     block_j_x = j % columns;
     block_j_y = j / columns;
-    memcpy(&temp, &blocks[block_i_y][block_i_x].green, BLOCK_HEIGHT * BLOCK_WIDTH);
-    memcpy(&blocks[block_i_y][block_i_x].green, &blocks[block_j_y][block_j_x].green, BLOCK_HEIGHT * BLOCK_WIDTH);
-    memcpy(&blocks[block_j_y][block_j_x].green, &temp, BLOCK_HEIGHT * BLOCK_WIDTH);
+    std::swap(blocks[block_i_y][block_i_x].green, blocks[block_j_y][block_j_x].green);
 
     j = dist(gen_blue);
     block_j_x = j % columns;
     block_j_y = j / columns;
-    memcpy(&temp, &blocks[block_i_y][block_i_x].blue, BLOCK_HEIGHT * BLOCK_WIDTH);
-    memcpy(&blocks[block_i_y][block_i_x].blue, &blocks[block_j_y][block_j_x].blue, BLOCK_HEIGHT * BLOCK_WIDTH);
-    memcpy(&blocks[block_j_y][block_j_x].blue, &temp, BLOCK_HEIGHT * BLOCK_WIDTH);
+    std::swap(blocks[block_i_y][block_i_x].blue, blocks[block_j_y][block_j_x].blue);
+
+    inter_shuffle = inter_dist(gen_inter);
+
+    switch (inter_shuffle) {
+    case 0:
+      // Don't do inter-channel shuffle
+      break;
+    case 1:
+      // (R, G, B) -> (R, B, G) after the initial swap
+      std::swap(blocks[block_i_y][block_i_x].blue, blocks[block_i_y][block_i_x].green);
+      break;
+    case 2:
+      // (R, G, B) -> (B, R, G)
+      std::swap(blocks[block_i_y][block_i_x].red, blocks[block_i_y][block_i_x].blue);
+      break;
+    }
   }
 
   LOGD("scramble_rgb finished");
@@ -891,7 +904,7 @@ static void do_encrypt_etc(j_decompress_ptr dinfo,
       pixels += (dinfo->output_components - 3); // Might be using RGBX so there's an extra byte
 
       if (block_x >= columns || block_y >= rows)
-              LOGD("do_encrypt_etc 2 (%d, %d) output_scanline=%d / (%d, %d)", block_x, block_y, dinfo->output_scanline, pixel_x, pixel_y);
+        LOGD("do_encrypt_etc 2 (%d, %d) output_scanline=%d / (%d, %d)", block_x, block_y, dinfo->output_scanline, pixel_x, pixel_y);
     }
   }
 
