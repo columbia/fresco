@@ -806,10 +806,10 @@ static void scramble_rgb(struct rgb_block **blocks,
   std::default_random_engine gen_inter;
   std::uniform_int_distribution<int> inter_dist(0, 2);
 
-  gen_red.seed(10000000);
-  gen_green.seed(20000000);
-  gen_blue.seed(30000000);
-  gen_inter.seed(10000000 ^ 20000000 ^ 30000000);
+  gen_red.seed(10005000);
+  gen_green.seed(20005000);
+  gen_blue.seed(30005000);
+  gen_inter.seed(10005000 ^ 20005000 ^ 30005000);
 
   LOGD("scramble_rgb rows=%d, columns=%d", rows, columns);
 
@@ -919,7 +919,8 @@ static void initialize_grayscale_compress(struct jpeg_compress_struct& cinfo,
     JpegErrorHandler& error_handler,
     struct jpeg_destination_mgr& destination,
     int rounded_width,
-    int rounded_height) {
+    int rounded_height,
+    int quality) {
   initCompressStruct(cinfo, dinfo, error_handler, destination);
   // initialize with default params, then copy the ones needed for lossless transcoding
   //jpeg_copy_critical_parameters(&dinfo, &cinfo);
@@ -931,7 +932,8 @@ static void initialize_grayscale_compress(struct jpeg_compress_struct& cinfo,
   cinfo.image_width = rounded_width;
   cinfo.image_height = rounded_height;
   jpeg_set_defaults(&cinfo);
-  jpeg_set_quality(&cinfo, 85, TRUE);
+  LOGD("encrypt_etc initialize_grayscale_compress() quality=%d", quality);
+  jpeg_set_quality(&cinfo, quality, TRUE);
 }
 
 static void encrypt_etc(
@@ -941,7 +943,8 @@ static void encrypt_etc(
     jobject os_green,
     jobject os_blue,
     jstring x_0_jstr,
-    jstring mu_jstr) {
+    jstring mu_jstr,
+    jint quality) {
   JpegInputStreamWrapper is_wrapper{env, is};
   JpegOutputStreamWrapper os_wrapper_red{env, os_red};
   JpegOutputStreamWrapper os_wrapper_green{env, os_green};
@@ -999,9 +1002,9 @@ static void encrypt_etc(
 
   // Now ready to write the output compressed JPEG
   // create compress struct
-  initialize_grayscale_compress(cinfo_red, dinfo, error_handler, dest_red, rounded_width, rounded_height);
-  initialize_grayscale_compress(cinfo_green, dinfo, error_handler, dest_green, rounded_width, rounded_height);
-  initialize_grayscale_compress(cinfo_blue, dinfo, error_handler, dest_blue, rounded_width, rounded_height);
+  initialize_grayscale_compress(cinfo_red, dinfo, error_handler, dest_red, rounded_width, rounded_height, quality);
+  initialize_grayscale_compress(cinfo_green, dinfo, error_handler, dest_green, rounded_width, rounded_height, quality);
+  initialize_grayscale_compress(cinfo_blue, dinfo, error_handler, dest_blue, rounded_width, rounded_height, quality);
   jpeg_start_compress(&cinfo_red, TRUE);
   jpeg_start_compress(&cinfo_green, TRUE);
   jpeg_start_compress(&cinfo_blue, TRUE);
@@ -1082,8 +1085,9 @@ void encryptJpegEtc(
     jobject os_green,
     jobject os_blue,
     jstring x_0_jstr,
-    jstring mu_jstr) {
-  encrypt_etc(env, is, os_red, os_green, os_blue, x_0_jstr, mu_jstr);
+    jstring mu_jstr,
+    jint quality) {
+  encrypt_etc(env, is, os_red, os_green, os_blue, x_0_jstr, mu_jstr, quality);
 }
 
 } } } }

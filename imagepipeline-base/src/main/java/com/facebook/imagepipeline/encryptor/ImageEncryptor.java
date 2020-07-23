@@ -40,7 +40,8 @@ public interface ImageEncryptor {
           OutputStream outputStreamRed,
           OutputStream outputStreamGreen,
           OutputStream outputStreamBlue,
-          JpegCryptoKey key)
+          JpegCryptoKey key,
+          int quality)
           throws IOException;
 
   /**

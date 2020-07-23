@@ -23,7 +23,8 @@ void encryptJpegEtc(
     jobject os_green,
     jobject os_blue,
     jstring x_0_jstr,
-    jstring mu_jstr);
+    jstring mu_jstr,
+    int quality);
 
 } } } }
 #endif //FRESCO_JPEG_CRYPTO_H

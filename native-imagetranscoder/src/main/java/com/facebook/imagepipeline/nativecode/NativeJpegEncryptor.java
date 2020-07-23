@@ -52,12 +52,13 @@ public class NativeJpegEncryptor implements ImageEncryptor {
           OutputStream outputStreamRed,
           OutputStream outputStreamGreen,
           OutputStream outputStreamBlue,
-          JpegCryptoKey key)
+          JpegCryptoKey key,
+          int quality)
           throws IOException {
     InputStream is = null;
     try {
       is = encodedImage.getInputStream();
-      encryptJpegEtc(is, outputStreamRed, outputStreamGreen, outputStreamBlue, key);
+      encryptJpegEtc(is, outputStreamRed, outputStreamGreen, outputStreamBlue, key, quality);
     } finally {
       Closeables.closeQuietly(is);
     }
@@ -100,7 +101,8 @@ public class NativeJpegEncryptor implements ImageEncryptor {
           final OutputStream outputStreamRed,
           final OutputStream outputStreamGreen,
           final OutputStream outputStreamBlue,
-          final JpegCryptoKey key)
+          final JpegCryptoKey key,
+          final int quality)
           throws IOException {
     NativeJpegTranscoderSoLoader.ensure();
     nativeEncryptJpegEtc(
@@ -109,7 +111,8 @@ public class NativeJpegEncryptor implements ImageEncryptor {
             Preconditions.checkNotNull(outputStreamGreen),
             Preconditions.checkNotNull(outputStreamBlue),
             key.getX0(),
-            key.getMu());
+            key.getMu(),
+            quality);
   }
 
   @DoNotStrip
@@ -127,6 +130,7 @@ public class NativeJpegEncryptor implements ImageEncryptor {
           OutputStream outputStreamGreen,
           OutputStream outputStreamBlue,
           String x0,
-          String mu)
+          String mu,
+          int quality)
           throws IOException;
 }
