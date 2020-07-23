@@ -50,6 +50,8 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
     private val TAG = "DraweeEncryptFragment"
 
+    private val JPEG_QUALITY = 50
+
     private var mDraweeEncryptView: SimpleDraweeView? = null
     private var mDraweeDecryptView: SimpleDraweeView? = null
     private var mDraweeDecryptDiskView: SimpleDraweeView? = null
@@ -272,10 +274,12 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         val outputFileGreen = image.parentFile.resolve("${image.nameWithoutExtension}_encrypted_green.${image.extension}")
         val outputFileBlue = image.parentFile.resolve("${image.nameWithoutExtension}_encrypted_blue.${image.extension}")
 
+        /*
         if (outputFileRed.exists()) {
             FLog.d(TAG, "Encrypted image ${outputFileRed.name} already exists, skipping encryption")
             return
         }
+         */
 
         pipeline!!.clearCaches()
         setNewKey(true)
@@ -388,13 +392,17 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
     }
 
     private fun decryptEtcImage(trio: ImageTrio, callback: (encryptedFile: File) -> Unit) {
-        val outputFile = trio.redFile.parentFile.resolve("${trio.redFile.nameWithoutExtension.replace("encrypted_red", "decrypted")}.${trio.redFile.extension}")
+        val outputDir = File(trio.redFile.parentFile, "decrypted")
+        outputDir.mkdirs()
+        val outputFile = outputDir.resolve("${trio.redFile.nameWithoutExtension.replace("red", "decrypted")}.${trio.redFile.extension}")
 
+        /*
         if (outputFile.exists()) {
             FLog.d(TAG, "Decrypted image ${outputFile.name} already exists, skipping decryption")
             scanFile(outputFile.absolutePath)
             return
         }
+        */
 
         pipeline!!.clearCaches()
         setNewKey(true)
@@ -415,15 +423,17 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
     private fun decryptEtcFiles(files: List<File>) {
         val imageTrios = mutableListOf<ImageTrio>()
+//        val red = "encrypted_red"
+        val red = "red"
 
         for (imageFile in files) {
-            if (!imageFile.nameWithoutExtension.contains("encrypted")) {
-                continue
-            }
+//            if (!imageFile.nameWithoutExtension.contains("encrypted")) {
+//                continue
+//            }
 
-            if (imageFile.nameWithoutExtension.contains("encrypted_red")) {
-                val greenFile = File(imageFile.absolutePath.replace("encrypted_red", "encrypted_green"))
-                val blueFile = File(imageFile.absolutePath.replace("encrypted_red", "encrypted_blue"))
+            if (imageFile.nameWithoutExtension.contains("red")) {
+                val greenFile = File(imageFile.absolutePath.replace(red, "green"))
+                val blueFile = File(imageFile.absolutePath.replace(red, "blue"))
 
                 imageTrios.add(ImageTrio(imageFile, greenFile, blueFile))
             }
@@ -446,12 +456,12 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
     }
 
     private fun encryptDataSourceToDisk(dataSource: DataSource<CloseableReference<PooledByteBuffer>>,
-                                 viewToDisplayWith: SimpleDraweeView?,
-                                 encryptorFactory: ImageEncryptorFactory,
-                                 outputFile: File? = null,
-                                 outputFileGreen: File? = null,
-                                 outputFileBlue: File? = null,
-                                 callback: ((encryptedFile: File) -> Unit)? = null) {
+                                        viewToDisplayWith: SimpleDraweeView?,
+                                        encryptorFactory: ImageEncryptorFactory,
+                                        outputFile: File? = null,
+                                        outputFileGreen: File? = null,
+                                        outputFileBlue: File? = null,
+                                        callback: ((encryptedFile: File) -> Unit)? = null) {
         val executor = DefaultExecutorSupplier(1).forBackgroundTasks()
 
         val dataSubscriber = object : BaseDataSubscriber<CloseableReference<PooledByteBuffer>>() {
@@ -472,7 +482,8 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
                         try {
                             val uriAsFile = File(mUri!!.lastPathSegment)
-                            outputImageFile = outputFile ?: File.createTempFile(uriAsFile.nameWithoutExtension, ".jpg", encryptedImageDir)
+                            outputImageFile = outputFile
+                                    ?: File.createTempFile(uriAsFile.nameWithoutExtension, ".jpg", encryptedImageDir)
 
                             val fileOutputStream = FileOutputStream(outputImageFile)
 
@@ -484,7 +495,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
                                 CRYPTO_LOCK.withLock {
                                     val encryptTime = measureTimeMillis {
-                                        encryptor.encryptEtc(encodedImage, fileOutputStream, fileOutputStreamGreen, fileOutputStreamBlue, lastKey)
+                                        encryptor.encryptEtc(encodedImage, fileOutputStream, fileOutputStreamGreen, fileOutputStreamBlue, lastKey, JPEG_QUALITY)
                                     }
                                     FLog.d(TAG, "Wrote %s encryptEtc Red to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
                                     FLog.d(TAG, "Wrote %s encryptEtc Green to %s (size: %s bytes)", mUri, outputFileGreen.absolutePath, outputFileGreen.length() / 8)
@@ -569,6 +580,9 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
                         FLog.d(TAG, "decryptDataSourceToDisk decryptEtc() decryptTime=$decryptTime ($outputFile)")
                     }
+                    encodedImage.close()
+                    encodedImageGreen.close()
+                    encodedImageBlue.close()
                 } else {
                     decryptor.decrypt(encodedImage, fileOutputStream, lastKey)
                 }
