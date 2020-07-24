@@ -806,10 +806,10 @@ static void scramble_rgb(struct rgb_block **blocks,
   std::default_random_engine gen_inter;
   std::uniform_int_distribution<int> inter_dist(0, 2);
 
-  gen_red.seed(10005000);
-  gen_green.seed(20005000);
-  gen_blue.seed(30005000);
-  gen_inter.seed(10005000 ^ 20005000 ^ 30005000);
+  gen_red.seed(10000000);
+  gen_green.seed(20000000);
+  gen_blue.seed(30000000);
+  gen_inter.seed(10000000 ^ 20000000 ^ 30000000);
 
   LOGD("scramble_rgb rows=%d, columns=%d", rows, columns);
 
