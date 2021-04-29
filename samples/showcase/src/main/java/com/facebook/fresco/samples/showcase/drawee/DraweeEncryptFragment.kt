@@ -44,6 +44,8 @@ import java.net.URL
 import java.util.*
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import kotlin.system.measureTimeMillis
 
 class DraweeEncryptFragment : BaseShowcaseFragment() {
@@ -58,7 +60,8 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
     private var mUri: Uri? = null
 
     private var encryptedImageDir: File? = null
-    private var downloadDir: File? = null
+    private var downloadOriginalsDir: File? = null
+    private var encryptedOutputDir: File? = null
     private var lastSavedImage: Uri? = null
     private var lastKey: JpegCryptoKey? = null
 
@@ -84,9 +87,15 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
         //encryptedImageDir = Preconditions.checkNotNull<Context>(context).getExternalFilesDir(null)
         encryptedImageDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "pdk-showcase")
-        downloadDir = File(encryptedImageDir, "downloads")
-        downloadDir!!.mkdirs()
-        FLog.d(TAG, "downloadDir=$downloadDir, exists=${downloadDir!!.exists()}")
+        downloadOriginalsDir = File(encryptedImageDir, "originals")
+        downloadOriginalsDir!!.mkdirs()
+        FLog.d(TAG, "downloadOriginalsDir=$downloadOriginalsDir, exists=${downloadOriginalsDir!!.exists()}")
+        encryptedOutputDir = File(encryptedImageDir, "encrypted-output")
+        encryptedOutputDir!!.mkdirs()
+        FLog.d(TAG, "encryptedOutputDir=$encryptedOutputDir, exists=${encryptedOutputDir!!.exists()}")
+        encryptedOutputDir = File(encryptedImageDir, "encrypted-output")
+        encryptedOutputDir!!.mkdirs()
+        FLog.d(TAG, "encryptedOutputDir=$encryptedOutputDir, exists=${encryptedOutputDir!!.exists()}")
 
         mUri = sampleUris().createSampleUri()
         mDraweeEncryptView = view.findViewById(R.id.drawee_view)
@@ -111,7 +120,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
                 .setOnClickListener { setDecryptFromUrlOptions() }
 
         view.findViewById<View>(R.id.btn_start_ml_labeling).setOnClickListener {
-            val dlDir = downloadDir!!
+            val dlDir = encryptedOutputDir!!
             val imageList = dlDir.listFiles { _, name: String? ->
                 name?.toLowerCase(Locale.US)?.endsWith(".jpg") ?: false
             }
@@ -128,7 +137,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
         view.findViewById<View>(R.id.btn_start_batch_decrypt).setOnClickListener {
             //decryptFiles(downloadDir!!.listFiles().toList())
-            decryptEtcFiles(downloadDir!!.listFiles().toList())
+            decryptEtcFiles(encryptedOutputDir!!.listFiles().toList())
         }
     }
 
@@ -198,11 +207,11 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
     @Synchronized
     private fun downloadImagesFromRemoteList(onDownloadcomplete: (List<File>) -> Unit) {
-        if (!downloadDir!!.mkdir() && !downloadDir!!.exists()) {
-            throw RuntimeException("Failed to create download dir for images: " + downloadDir!!.absolutePath)
+        if (!downloadOriginalsDir!!.mkdir() && !downloadOriginalsDir!!.exists()) {
+            throw RuntimeException("Failed to create download dir for images: " + downloadOriginalsDir!!.absolutePath)
         }
 
-        val downloader = TestImageDownloader(downloadDir!!)
+        val downloader = TestImageDownloader(downloadOriginalsDir!!)
 
         val listUrl = URL(getString(R.string.image_list_url))
 
@@ -269,17 +278,16 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         encryptDataSourceToDisk(dataSource, null, factory, outputFile, null, null, callback)
     }
 
-    private fun encryptEtcImage(image: File, callback: (encryptedFile: File) -> Unit) {
-        val outputFileRed = image.parentFile.resolve("${image.nameWithoutExtension}_encrypted_red.${image.extension}")
-        val outputFileGreen = image.parentFile.resolve("${image.nameWithoutExtension}_encrypted_green.${image.extension}")
-        val outputFileBlue = image.parentFile.resolve("${image.nameWithoutExtension}_encrypted_blue.${image.extension}")
+    private fun encryptEtcImage(image: File, callback: (encryptedFile: File?) -> Unit) {
+        val outputFileRed = encryptedOutputDir!!.resolve("${image.nameWithoutExtension}_encrypted_red.${image.extension}")
+        val outputFileGreen = encryptedOutputDir!!.resolve("${image.nameWithoutExtension}_encrypted_green.${image.extension}")
+        val outputFileBlue = encryptedOutputDir!!.resolve("${image.nameWithoutExtension}_encrypted_blue.${image.extension}")
 
-        /*
-        if (outputFileRed.exists()) {
+        if (outputFileRed.exists() && outputFileRed.length() > 0) {
             FLog.d(TAG, "Encrypted image ${outputFileRed.name} already exists, skipping encryption")
+            callback(null)
             return
         }
-         */
 
         pipeline!!.clearCaches()
         setNewKey(true)
@@ -329,14 +337,23 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
                 if (imageFile.nameWithoutExtension.contains("encrypted")) {
                     continue
                 }
-                withContext(Dispatchers.IO) {
-                    FLog.d(TAG, "Encrypting etc image $imageFile")
-                    encryptEtcImage(imageFile) {
-                        val fileSizeCsvRow = "CSV: ${imageFile.name},${imageFile.length()},${it.length()},${it.length() * 1.0 / imageFile.length()}"
-                        FLog.d(TAG, fileSizeCsvRow)
-                    }
+                FLog.d(TAG, "encryptEtcFiles(): Encrypting etc image $imageFile")
+                val encryptedImageFile = synchronousEncryptEtcImage(imageFile)
+
+                if (encryptedImageFile != null) {
+                    val fileSizeCsvRow = "CSV: ${imageFile.name},${imageFile.length()},${encryptedImageFile.length()},${encryptedImageFile.length() * 1.0 / imageFile.length()}"
+                    FLog.d(TAG, fileSizeCsvRow)
+                    FLog.d(TAG, "encryptEtcFiles(): Done encrypting etc image $imageFile")
+                } else {
+                    FLog.d(TAG, "encryptEtcFiles(): Did not encrypt etc image $imageFile")
                 }
             }
+        }
+    }
+
+    private suspend fun synchronousEncryptEtcImage(imageFile: File): File? = suspendCoroutine { cont ->
+        encryptEtcImage(imageFile) {
+            cont.resume(it)
         }
     }
 
@@ -493,17 +510,27 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
                                 val fileOutputStreamGreen = FileOutputStream(outputFileGreen)
                                 val fileOutputStreamBlue = FileOutputStream(outputFileBlue)
 
-                                CRYPTO_LOCK.withLock {
-                                    val encryptTime = measureTimeMillis {
-                                        encryptor.encryptEtc(encodedImage, fileOutputStream, fileOutputStreamGreen, fileOutputStreamBlue, lastKey, JPEG_QUALITY)
-                                    }
-                                    FLog.d(TAG, "Wrote %s encryptEtc Red to %s (size: %s bytes)", mUri, outputImageFile!!.absolutePath, outputImageFile.length() / 8)
+                                // CRYPTO_LOCK.withLock {
+                                FLog.d(TAG, "encryptDataSourceToDisk(): encrypting etc ${outputImageFile!!.name}")
+                                val encryptTime = measureTimeMillis {
+                                    encryptor.encryptEtc(encodedImage, fileOutputStream, fileOutputStreamGreen, fileOutputStreamBlue, lastKey, JPEG_QUALITY)
+                                }
+                                FLog.d(TAG, "encryptDataSourceToDisk(): encrypt etc time: $encryptTime / length = ${outputImageFile.length()}")
+
+                                if (outputImageFile.length() > 0) {
+                                    FLog.d(TAG, "Wrote %s encryptEtc Red to %s (size: %s bytes)", mUri, outputImageFile.absolutePath, outputImageFile.length() / 8)
                                     FLog.d(TAG, "Wrote %s encryptEtc Green to %s (size: %s bytes)", mUri, outputFileGreen.absolutePath, outputFileGreen.length() / 8)
                                     FLog.d(TAG, "Wrote %s encryptEtc Blue to %s (size: %s bytes)", mUri, outputFileBlue.absolutePath, outputFileBlue.length() / 8)
                                     FLog.d(TAG, "encryptEtc encryptTime=$encryptTime ($outputImageFile)")
                                     scanFile(outputFileGreen.absolutePath)
                                     scanFile(outputFileBlue.absolutePath)
+                                } else {
+                                    outputFile!!.delete()
+                                    outputFileGreen.delete()
+                                    outputFileBlue.delete()
+                                    throw RuntimeException("Failed to encrypt JPEG, file size = 0: $outputImageFile")
                                 }
+                                //}
 
                                 Closeables.close(fileOutputStreamGreen, true)
                                 Closeables.close(fileOutputStreamBlue, true)
@@ -516,7 +543,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
                             Closeables.close(fileOutputStream, true)
                         } catch (e: IOException) {
-                            FLog.e(TAG, "IOException while trying to write encrypted JPEG to disk", e)
+                            throw RuntimeException("IOException while trying to write encrypted JPEG to disk", e)
                         }
                     } finally {
                         CloseableReference.closeSafely(ref)
@@ -541,7 +568,10 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
 
             override fun onFailureImpl(dataSource: DataSource<CloseableReference<PooledByteBuffer>>) {
                 val t = dataSource.failureCause
-                FLog.e(TAG, "Failed to load and encrypt/decrypt JPEG", t)
+                outputFile!!.delete()
+                outputFileGreen!!.delete()
+                outputFileBlue!!.delete()
+                throw RuntimeException("Failed to load and encrypt/decrypt JPEG: $outputFile , $outputFileGreen , $outputFileBlue", t)
             }
         }
 
