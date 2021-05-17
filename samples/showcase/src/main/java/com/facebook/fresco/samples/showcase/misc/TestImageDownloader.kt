@@ -15,11 +15,12 @@ class TestImageDownloader(private val downloadDir: File) {
         GlobalScope.launch(context = Dispatchers.Main) {
             withContext(Dispatchers.IO) {
                 val savedFiles = mutableListOf<File>()
-                for (line in listUrl.readText().lines()) {
+                val listUrlText = listUrl.readText()
+                for (line in listUrlText.lines()) {
+                    FLog.d(TAG, "Got line: $line")
                     val imageUrl = URL(line)
                     val imageUri = Uri.parse(line)
 
-                    FLog.d(TAG, "Got line: $line")
                     val downloadedImage = File(downloadDir, imageUri.lastPathSegment!!)
 
                     if (!downloadedImage.exists()) {

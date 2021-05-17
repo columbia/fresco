@@ -19,7 +19,9 @@
   <string name="drawee_encrypt_help">JPEG encryption.</string>
   <string name="drawee_encrypt_decrypt_button">Decrypt JPEG</string>
   <string name="drawee_encrypt_start_batch_encrypt">Start Batch Encrypt</string>
+  <string name="drawee_encrypt_start_batch_encrypt_thumbnails">Start Batch Encrypt Thumbnails</string>
   <string name="drawee_encrypt_start_batch_decrypt">Start Batch Decrypt</string>
+  <string name="drawee_encrypt_start_batch_decrypt_gp_compressed">Start Batch Decrypt Google Photos Compressed</string>
   <string name="drawee_encrypt_decrypt_disk_button">Decrypt JPEG on Disk</string>
   <string name="drawee_encrypt_start_ml_labeling_button">Start ML Labeling</string>
 
