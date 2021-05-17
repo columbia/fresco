@@ -1,6 +1,8 @@
 package com.facebook.fresco.samples.showcase.drawee
 
+import android.app.AlertDialog
 import android.content.Context
+import android.content.DialogInterface
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Bundle
@@ -9,7 +11,6 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-
 import com.facebook.common.internal.Closeables
 import com.facebook.common.internal.Preconditions
 import com.facebook.common.logging.FLog
@@ -41,12 +42,10 @@ import kotlinx.android.synthetic.main.fragment_vito_view_ktx.*
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
-
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
-import java.lang.IllegalArgumentException
 import java.net.URL
 import java.util.*
 import java.util.concurrent.locks.ReentrantLock
@@ -54,6 +53,7 @@ import kotlin.concurrent.withLock
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 import kotlin.system.measureTimeMillis
+
 
 class DraweeEncryptFragment : BaseShowcaseFragment() {
 
@@ -94,25 +94,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         pipeline = Fresco.getImagePipeline()
 
-        //encryptedImageDir = Preconditions.checkNotNull<Context>(context).getExternalFilesDir(null)
-        encryptedImageDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "pdk-showcase")
-
-        downloadOriginalsDir = File(encryptedImageDir, "originals")
-        downloadOriginalsDir!!.mkdirs()
-        FLog.d(TAG, "downloadOriginalsDir=$downloadOriginalsDir, exists=${downloadOriginalsDir!!.exists()}")
-
-        encryptedOutputDir = File(encryptedImageDir, "encrypted-output")
-        encryptedOutputDir!!.mkdirs()
-        FLog.d(TAG, "encryptedOutputDir=$encryptedOutputDir, exists=${encryptedOutputDir!!.exists()}")
-
-        encryptedGooglePhotosCompressedDir = File(encryptedImageDir, "encrypted-gp-compressed")
-        encryptedGooglePhotosCompressedDir!!.mkdirs()
-        FLog.d(TAG, "encryptedGooglePhotosCompressedDir=$encryptedGooglePhotosCompressedDir, exists=${encryptedGooglePhotosCompressedDir!!.exists()}")
-
-        // Make dir to hold thumbnails
-        thumbnailDir = File(encryptedImageDir, "resized-thumbnails")
-        thumbnailDir!!.mkdirs()
-        FLog.d(TAG, "tempThumbnailDir=$thumbnailDir, exists=${thumbnailDir!!.exists()}")
+        makeDirs()
 
         mUri = sampleUris().createSampleUri()
         mDraweeEncryptView = view.findViewById(R.id.drawee_view)
@@ -146,26 +128,47 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         }
 
         view.findViewById<View>(R.id.btn_start_batch_encrypt).setOnClickListener {
-            downloadImagesFromRemoteList {
-                //encryptFiles(it)
-                encryptEtcFiles(it)
+            makeDirs()
+            downloadImagesFromRemoteList { fileList, downloadUrl ->
+                encryptEtcFiles(fileList, downloadUrl)
             }
         }
 
         view.findViewById<View>(R.id.btn_start_batch_encrypt_thumbnails).setOnClickListener {
-            makeThumbnails(downloadOriginalsDir!!.listFiles().toList().filter { it.extension.endsWith("jpg") }) {
-                encryptEtcFiles(it)
-            }
+            makeDirs()
+            makeThumbnails(downloadOriginalsDir!!.listFiles().toList().filter { it.extension.endsWith("jpg") })
         }
 
         view.findViewById<View>(R.id.btn_start_batch_decrypt).setOnClickListener {
-            //decryptFiles(downloadDir!!.listFiles().toList())
+            makeDirs()
             decryptEtcFiles(encryptedOutputDir!!.listFiles().toList())
         }
 
         view.findViewById<View>(R.id.btn_start_batch_decrypt_gp_compressed).setOnClickListener {
+            makeDirs()
             decryptEtcFiles(encryptedGooglePhotosCompressedDir!!.listFiles().toList())
         }
+    }
+
+    private fun makeDirs() {
+        encryptedImageDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "pdk-showcase")
+
+        downloadOriginalsDir = File(encryptedImageDir, "originals")
+        downloadOriginalsDir!!.mkdirs()
+        FLog.d(TAG, "downloadOriginalsDir=$downloadOriginalsDir, exists=${downloadOriginalsDir!!.exists()}")
+
+        encryptedOutputDir = File(encryptedImageDir, "encrypted-output")
+        encryptedOutputDir!!.mkdirs()
+        FLog.d(TAG, "encryptedOutputDir=$encryptedOutputDir, exists=${encryptedOutputDir!!.exists()}")
+
+        encryptedGooglePhotosCompressedDir = File(encryptedImageDir, "encrypted-gp-compressed")
+        encryptedGooglePhotosCompressedDir!!.mkdirs()
+        FLog.d(TAG, "encryptedGooglePhotosCompressedDir=$encryptedGooglePhotosCompressedDir, exists=${encryptedGooglePhotosCompressedDir!!.exists()}")
+
+        // Make dir to hold thumbnails
+        thumbnailDir = File(encryptedImageDir, "resized-thumbnails")
+        thumbnailDir!!.mkdirs()
+        FLog.d(TAG, "tempThumbnailDir=$thumbnailDir, exists=${thumbnailDir!!.exists()}")
     }
 
     private fun setNewKey(useStaticKey: Boolean = true) {
@@ -232,8 +235,16 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         //mDraweeDecryptDiskView.setImageRequest(imageRequest);
     }
 
+    private fun alertView(title: String, message: String) {
+        val dialog: AlertDialog.Builder = AlertDialog.Builder(context)
+        dialog.setTitle(title)
+                .setIcon(R.drawable.ic_done)
+                .setMessage(message)
+                .setPositiveButton("OK", DialogInterface.OnClickListener { dialoginterface, i -> }).show()
+    }
+
     @Synchronized
-    private fun downloadImagesFromRemoteList(onDownloadcomplete: (List<File>) -> Unit) {
+    private fun downloadImagesFromRemoteList(onDownloadcomplete: (fileList: List<File>, downloadUrl: URL) -> Unit) {
         if (!downloadOriginalsDir!!.mkdir() && !downloadOriginalsDir!!.exists()) {
             throw RuntimeException("Failed to create download dir for images: " + downloadOriginalsDir!!.absolutePath)
         }
@@ -245,7 +256,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         FLog.d(TAG, "Got listUrl=$listUrl")
 
         downloader.downloadFromList(listUrl) { files ->
-            onDownloadcomplete(files)
+            onDownloadcomplete(files, listUrl)
         }
     }
 
@@ -356,7 +367,7 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         }
     }
 
-    private fun makeThumbnails(originalFiles: List<File>, onThumbnailsComplete: (List<File>) -> Unit) {
+    private fun makeThumbnails(originalFiles: List<File>) {
         val resizeOptions = ResizeOptions(400, 400)
         val quality = 50
 
@@ -407,9 +418,10 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         }
     }
 
-    private fun encryptEtcFiles(files: List<File>) {
+    private fun encryptEtcFiles(files: List<File>, downloadUrl: URL) {
         GlobalScope.launch(Dispatchers.Main) {
             // Process only one image at a time
+            var successCount = 0
             for (imageFile in files) {
                 scanFile(imageFile.absolutePath)
                 if (imageFile.nameWithoutExtension.contains("encrypted")) {
@@ -422,10 +434,12 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
                     val fileSizeCsvRow = "CSV: ${imageFile.name},${imageFile.length()},${encryptedImageFile.length()},${encryptedImageFile.length() * 1.0 / imageFile.length()}"
                     FLog.d(TAG, fileSizeCsvRow)
                     FLog.d(TAG, "encryptEtcFiles(): Done encrypting etc image $imageFile")
+                    successCount++
                 } else {
                     FLog.d(TAG, "encryptEtcFiles(): Did not encrypt etc image $imageFile")
                 }
             }
+            alertView("Encrypt Complete", "Finished encrypting $successCount images from ${downloadUrl.file}")
         }
     }
 
@@ -538,11 +552,14 @@ class DraweeEncryptFragment : BaseShowcaseFragment() {
         }
         GlobalScope.launch(Dispatchers.Main) {
             // Process only one image at a time
+            var successCount = 0
             for (trio in imageTrios) {
                 FLog.d(TAG, "Decrypting image $trio")
                 val resultFile = synchronousDecryptEtcFiles(trio)
                 FLog.d(TAG, "Finished decrypting image $trio (resultFile=$resultFile")
+                successCount++
             }
+            alertView("Decrypt Complete", "Finished decrypting $successCount images in ${files[0].parent}")
         }
     }
 
